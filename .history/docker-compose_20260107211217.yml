@@ -17,7 +17,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-sk-zgyrkpmbcwbdbxioxssbzdbzarvnwxatuqcbzuwymzoqpmgg}
       SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
-      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-tencent/Hunyuan-MT-7B}
+      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-Qwen/Qwen2.5-72B-Instruct}
     volumes:
       - artifacts:/data/artifacts
     ports:
@@ -38,7 +38,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-sk-zgyrkpmbcwbdbxioxssbzdbzarvnwxatuqcbzuwymzoqpmgg}
       SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
-      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-tencent/Hunyuan-MT-7B}
+      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-Qwen/Qwen2.5-72B-Instruct}
     volumes:
       - artifacts:/data/artifacts
     depends_on:

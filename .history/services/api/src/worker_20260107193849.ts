@@ -110,19 +110,16 @@ worker.on("failed", async (job, err) => {
     if (!compareId) return;
     const artifacts = await ensureArtifacts(compareId);
     const json = await readJson<CompareJsonV1>(artifacts.jsonPath);
-    const attempts = typeof (job as any)?.opts?.attempts === "number" ? (job as any).opts.attempts : 1;
-    const attemptsMade = typeof (job as any)?.attemptsMade === "number" ? (job as any).attemptsMade : attempts;
-    const willRetry = attemptsMade < attempts;
     if (job?.name === "exportPdf") {
       if (!json.export) json.export = { pdf: { status: "none", jobId: null, error: null } };
       if (!json.export.pdf) json.export.pdf = { status: "none", jobId: null, error: null };
       if (!json.export.pdf.jobId) json.export.pdf.jobId = String(job.id);
-      json.export.pdf.status = willRetry ? "pending" : "failed";
+      json.export.pdf.status = "failed";
       json.export.pdf.error = err?.message ?? String(err);
     } else {
       if (!json.ai) json.ai = { mode: "async", status: "pending", jobId: null, result: null, error: null };
       if (!json.ai.jobId) json.ai.jobId = String(job?.id ?? "");
-      json.ai.status = willRetry ? "pending" : "failed";
+      json.ai.status = "failed";
       json.ai.error = err?.message ?? String(err);
     }
     await writeJson(artifacts.jsonPath, json);

@@ -118,27 +118,6 @@ app.post("/api/compare", upload.fields([{ name: "leftFile", maxCount: 1 }, { nam
       title: `${left.originalname} vs ${right.originalname}`
     });
 
-    const aiPayloadMaxRows = (() => {
-      const raw = String(env("AI_PAYLOAD_MAX_ROWS", "120")).trim();
-      const n = Number.parseInt(raw, 10);
-      if (!Number.isFinite(n) || n <= 0) return 120;
-      return Math.max(10, Math.min(500, n));
-    })();
-
-    const aiPayloadMaxTextLen = (() => {
-      const raw = String(env("AI_PAYLOAD_MAX_TEXT_LEN", "1600")).trim();
-      const n = Number.parseInt(raw, 10);
-      if (!Number.isFinite(n) || n <= 0) return 1600;
-      return Math.max(120, Math.min(10_000, n));
-    })();
-
-    const compactPayloadText = (s: string | null): string | null => {
-      const x = normalizeText(s ?? "");
-      if (!x) return null;
-      if (x.length <= aiPayloadMaxTextLen) return x;
-      return x.slice(0, aiPayloadMaxTextLen);
-    };
-
     const aiPayloadRows = rows
       .filter((r) => r.kind === "modified" || r.kind === "inserted" || r.kind === "deleted")
       .map((r) => {
@@ -149,16 +128,15 @@ app.post("/api/compare", upload.fields([{ name: "leftFile", maxCount: 1 }, { nam
           rowId: r.rowId,
           kind: r.kind as "modified" | "inserted" | "deleted",
           blockId,
-          beforeText: compactPayloadText(lb?.text ?? null),
-          afterText: compactPayloadText(rb?.text ?? null)
+          beforeText: lb?.text ?? null,
+          afterText: rb?.text ?? null
         };
       })
-      .filter((x) => normalizeText((x.beforeText ?? "") + (x.afterText ?? "")).length > 0)
-      .slice(0, aiPayloadMaxRows);
+      .filter((x) => normalizeText((x.beforeText ?? "") + (x.afterText ?? "")).length > 0);
 
     for (const r of rows) r.ai = { status: aiMode === "async" ? "pending" : "none" };
 
-    const analyzeJobId = aiMode === "async" ? `${compareId}__analyze` : null;
+    const analyzeJobId = aiMode === "async" ? `${compareId}:analyze` : null;
     const compareJson: CompareJsonV1 = {
       compareId,
       status: "done",
@@ -205,15 +183,7 @@ app.post("/api/compare", upload.fields([{ name: "leftFile", maxCount: 1 }, { nam
     await Promise.all([writeJson(artifacts.jsonPath, compareJson), fsWrite(artifacts.htmlPath, htmlDoc)]);
 
     if (aiMode === "async") {
-      await aiQueue.add(
-        "analyze",
-        { compareId },
-        {
-          jobId: analyzeJobId ?? undefined,
-          attempts: 3,
-          backoff: { type: "exponential", delay: 2_000 }
-        }
-      );
+      await aiQueue.add("analyze", { compareId, rows: aiPayloadRows }, { jobId: analyzeJobId ?? undefined });
       res.json({
         compareId,
         status: compareJson.status,
@@ -369,8 +339,8 @@ app.post("/api/compare/:compareId/export/pdf", async (req, res) => {
       return res.status(200).json({ compareId, status: "done", jobId: json.export.pdf.jobId, url: json.artifacts.comparePdfUrl });
     }
 
-    const exportJobId = `${compareId}__exportPdf`;
-    await aiQueue.add("exportPdf", { compareId }, { jobId: exportJobId, attempts: 3, backoff: { type: "exponential", delay: 2_000 } });
+    const exportJobId = `${compareId}:exportPdf`;
+    await aiQueue.add("exportPdf", { compareId }, { jobId: exportJobId });
     json.export.pdf.status = "pending";
     json.export.pdf.jobId = exportJobId;
     json.export.pdf.error = null;

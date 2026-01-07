@@ -13,7 +13,6 @@ export async function analyzeRisks(params: {
     beforeText: string | null;
     afterText: string | null;
   }>;
-  onProgress?: (info: { completed: number; total: number; phase: "overall" | "section"; sectionLabel?: string }) => void | Promise<void>;
 }): Promise<AiJobResult> {
   const cfg = getLlmConfig();
 
@@ -53,14 +52,6 @@ export async function analyzeRisks(params: {
 
   const sectionLabels = Array.from(new Set(withSection.map((x) => x.sectionLabel))).filter(Boolean);
 
-  const sectionMaxChanges = (() => {
-    const raw = envOptional("LLM_SECTION_MAX_CHANGES");
-    if (!raw) return 60;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n <= 0) return 60;
-    return Math.max(10, Math.min(200, n));
-  })();
-
   if (!cfg) {
     const overall: AiJobResultV2["overall"] = {
       summary: `共检测到 ${withSection.length} 处变更，覆盖 ${sectionLabels.length} 个一级章节。建议优先复核：责任、付款、终止、争议解决、数据合规等高风险条款。`,
@@ -70,8 +61,8 @@ export async function analyzeRisks(params: {
     };
     const sections = sectionLabels.map((label) => {
       const items = withSection.filter((x) => x.sectionLabel === label);
-      const relatedRowIds = items.slice(0, sectionMaxChanges).map((x) => x.rowId);
-      const relatedBlockIds = items.slice(0, sectionMaxChanges).map((x) => x.blockId);
+      const relatedRowIds = items.slice(0, 60).map((x) => x.rowId);
+      const relatedBlockIds = items.slice(0, 60).map((x) => x.blockId);
       return {
         sectionLabel: label,
         summary: `该一级章节共 ${items.length} 处变更，建议按条款逐项复核。`,
@@ -157,9 +148,6 @@ export async function analyzeRisks(params: {
     sectionMap.set(it.sectionLabel, arr);
   }
 
-  const totalSteps = 1 + orderedSectionLabels.length;
-  let completedSteps = 0;
-
   const heuristicOverall: AiJobResultV2["overall"] = {
     summary: `共检测到 ${withSection.length} 处变更，覆盖 ${sectionLabels.length} 个一级章节。建议优先复核：责任、付款、终止、争议解决、数据合规等高风险条款。`,
     keyRisks: [],
@@ -220,9 +208,6 @@ export async function analyzeRisks(params: {
     succeededCalls++;
   } catch {}
 
-  completedSteps++;
-  if (params.onProgress) await params.onProgress({ completed: completedSteps, total: totalSteps, phase: "overall" });
-
   if (!overall.summary.trim()) overall.summary = heuristicOverall.summary;
   if (overall.suggestions.length === 0) overall.suggestions = heuristicOverall.suggestions;
 
@@ -237,7 +222,7 @@ export async function analyzeRisks(params: {
   const sections: AiJobResultV2["sections"] = [];
   for (const label of orderedSectionLabels) {
     const items = sectionMap.get(label) ?? [];
-    const take = items.slice(0, sectionMaxChanges).map((x) => ({
+    const take = items.slice(0, 60).map((x) => ({
       rowId: x.rowId,
       blockId: x.blockId,
       kind: x.kind,
@@ -254,8 +239,6 @@ export async function analyzeRisks(params: {
         relatedRowIds: [],
         relatedBlockIds: []
       });
-      completedSteps++;
-      if (params.onProgress) await params.onProgress({ completed: completedSteps, total: totalSteps, phase: "section", sectionLabel: label });
       continue;
     }
 
@@ -291,13 +274,10 @@ export async function analyzeRisks(params: {
         summary: `该一级章节共 ${items.length} 处变更，建议按条款逐项复核。`,
         keyRisks: [],
         suggestions: ["核对变更是否影响权利义务边界、触发条件与责任承担"],
-        relatedRowIds: items.slice(0, sectionMaxChanges).map((x) => x.rowId),
-        relatedBlockIds: items.slice(0, sectionMaxChanges).map((x) => x.blockId)
+        relatedRowIds: items.slice(0, 60).map((x) => x.rowId),
+        relatedBlockIds: items.slice(0, 60).map((x) => x.blockId)
       });
     }
-
-    completedSteps++;
-    if (params.onProgress) await params.onProgress({ completed: completedSteps, total: totalSteps, phase: "section", sectionLabel: label });
   }
 
   const providerMeta = succeededCalls > 0 ? cfg.provider : "heuristic";

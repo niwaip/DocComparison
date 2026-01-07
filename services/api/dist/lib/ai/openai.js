@@ -26,8 +26,88 @@ function getLlmConfig() {
     return null;
 }
 async function callLlmJson(params) {
+    const timeoutMs = (() => {
+        const raw = ((0, env_1.envOptional)("LLM_HTTP_TIMEOUT_MS") ?? "").trim();
+        if (!raw)
+            return 90_000;
+        const n = Number.parseInt(raw, 10);
+        if (!Number.isFinite(n) || n <= 0)
+            return 90_000;
+        return Math.max(5_000, Math.min(240_000, n));
+    })();
+    const fetchWithTimeout = async (url, init) => {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...init, signal: controller.signal });
+        }
+        finally {
+            clearTimeout(t);
+        }
+    };
+    const parseModelJson = (rawText) => {
+        const stripFences = (s) => {
+            const t = s.trim();
+            const m = /^```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n```$/.exec(t);
+            return (m ? m[1] : t).trim();
+        };
+        const extractFirstJson = (s) => {
+            const text = s.trim();
+            const startObj = text.indexOf("{");
+            const startArr = text.indexOf("[");
+            const start = startObj === -1 ? startArr : startArr === -1 ? startObj : Math.min(startObj, startArr);
+            if (start === -1)
+                return null;
+            const open = text[start];
+            const close = open === "{" ? "}" : "]";
+            let depth = 0;
+            let inString = false;
+            let escaping = false;
+            for (let i = start; i < text.length; i++) {
+                const ch = text[i];
+                if (inString) {
+                    if (escaping) {
+                        escaping = false;
+                        continue;
+                    }
+                    if (ch === "\\") {
+                        escaping = true;
+                        continue;
+                    }
+                    if (ch === "\"")
+                        inString = false;
+                    continue;
+                }
+                if (ch === "\"") {
+                    inString = true;
+                    continue;
+                }
+                if (ch === open)
+                    depth++;
+                if (ch === close)
+                    depth--;
+                if (depth === 0)
+                    return text.slice(start, i + 1);
+            }
+            return null;
+        };
+        const text = stripFences(rawText);
+        try {
+            return JSON.parse(text);
+        }
+        catch { }
+        const extracted = extractFirstJson(text);
+        if (extracted) {
+            try {
+                return JSON.parse(extracted);
+            }
+            catch { }
+        }
+        const head = text.slice(0, 500).replace(/\s+/g, " ").trim();
+        throw new Error(`LLM returned non-JSON output: ${head}`);
+    };
     if (params.cfg.provider === "openai") {
-        const res = await fetch("https://api.openai.com/v1/responses", {
+        const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${params.cfg.apiKey}`,
@@ -51,10 +131,10 @@ async function callLlmJson(params) {
         const text = String(json?.output_text ?? "").trim();
         if (!text)
             throw new Error("OpenAI returned empty output_text");
-        return JSON.parse(text);
+        return parseModelJson(text);
     }
     const baseUrl = (params.cfg.baseUrl ?? "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
-    const res = await fetch(`${baseUrl}/chat/completions`, {
+    const res = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
             Authorization: `Bearer ${params.cfg.apiKey}`,
@@ -78,7 +158,7 @@ async function callLlmJson(params) {
     const text = String(json?.choices?.[0]?.message?.content ?? "").trim();
     if (!text)
         throw new Error("SiliconFlow returned empty message.content");
-    return JSON.parse(text);
+    return parseModelJson(text);
 }
 function getOpenAiConfig() {
     const cfg = getLlmConfig();

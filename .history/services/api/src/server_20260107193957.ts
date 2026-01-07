@@ -158,7 +158,7 @@ app.post("/api/compare", upload.fields([{ name: "leftFile", maxCount: 1 }, { nam
 
     for (const r of rows) r.ai = { status: aiMode === "async" ? "pending" : "none" };
 
-    const analyzeJobId = aiMode === "async" ? `${compareId}__analyze` : null;
+    const analyzeJobId = aiMode === "async" ? `${compareId}:analyze` : null;
     const compareJson: CompareJsonV1 = {
       compareId,
       status: "done",
@@ -369,7 +369,7 @@ app.post("/api/compare/:compareId/export/pdf", async (req, res) => {
       return res.status(200).json({ compareId, status: "done", jobId: json.export.pdf.jobId, url: json.artifacts.comparePdfUrl });
     }
 
-    const exportJobId = `${compareId}__exportPdf`;
+    const exportJobId = `${compareId}:exportPdf`;
     await aiQueue.add("exportPdf", { compareId }, { jobId: exportJobId, attempts: 3, backoff: { type: "exponential", delay: 2_000 } });
     json.export.pdf.status = "pending";
     json.export.pdf.jobId = exportJobId;
