@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./services/api
+    environment:
+      REDIS_URL: redis://redis:6379
+      ARTIFACTS_DIR: /data/artifacts
+      MAX_UPLOAD_MB: "20"
+      AI_MODE_DEFAULT: "async"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+    volumes:
+      - artifacts:/data/artifacts
+    ports:
+      - "3001:3000"
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ./services/api
+    command: ["node", "dist/worker.js"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      ARTIFACTS_DIR: /data/artifacts
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      - redis
+
+volumes:
+  artifacts:

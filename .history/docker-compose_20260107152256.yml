@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./services/api
+    environment:
+      REDIS_URL: redis://redis:6379
+      ARTIFACTS_DIR: /data/artifacts
+      MAX_UPLOAD_MB: "20"
+      AI_MODE_DEFAULT: "async"
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-Qwen/Qwen2.5-72B-Instruct}
+    volumes:
+      - artifacts:/data/artifacts
+    ports:
+      - "3001:3000"
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile.worker
+    command: ["node", "dist/worker.js"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      ARTIFACTS_DIR: /data/artifacts
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-Qwen/Qwen2.5-72B-Instruct}
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      - redis
+
+volumes:
+  artifacts:

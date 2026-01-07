@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>合同对比与风险分析</title>
+    <style>
+      :root{
+        --bg:#0b1220;
+        --surface:#0f172a;
+        --panel:#0b1220;
+        --card:#0b1220;
+        --border:rgba(255,255,255,.10);
+        --text:#e5e7eb;
+        --muted:rgba(229,231,235,.70);
+        --accent:#60a5fa;
+        --good:#34d399;
+        --warn:#fbbf24;
+        --bad:#fb7185;
+      }
+      *{box-sizing:border-box;}
+      body{
+        margin:0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        background: radial-gradient(1200px 700px at 20% -10%, rgba(96,165,250,.35), transparent 70%),
+                    radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.20), transparent 60%),
+                    var(--bg);
+        color:var(--text);
+      }
+      a{color:inherit;}
+      header{
+        padding:14px 18px;
+        border-bottom:1px solid var(--border);
+        background: linear-gradient(180deg, rgba(15,23,42,.85), rgba(15,23,42,.55));
+        backdrop-filter: blur(10px);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:16px;
+      }
+      .progress{position:absolute;left:0;right:0;bottom:-1px;height:3px;overflow:hidden;display:none;background:rgba(255,255,255,.06);}
+      .progress .bar{height:100%;width:40%;background:var(--accent);animation:progress 1.0s ease-in-out infinite;}
+      @keyframes progress{0%{transform:translateX(-110%);}100%{transform:translateX(260%);}}
+      .brand{display:flex; align-items:center; gap:10px; min-width: 260px;}
+      .brand .title{font-weight:700; letter-spacing:.2px;}
+      .brand .subtitle{font-size:12px; color:var(--muted); margin-top:2px;}
+      .status-pill{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:6px 10px;
+        border:1px solid var(--border);
+        border-radius:999px;
+        color:var(--muted);
+        font-size:12px;
+        background: rgba(15,23,42,.55);
+      }
+      main{
+        display:grid;
+        grid-template-columns: 1fr 380px;
+        gap:14px;
+        padding:14px;
+        min-height: calc(100vh - 64px);
+      }
+      body.risk-collapsed main{ grid-template-columns: 1fr 56px; }
+      .left{
+        min-width: 0;
+      }
+      .right{
+        min-width: 0;
+      }
+      .card{
+        border:1px solid var(--border);
+        border-radius:14px;
+        background: linear-gradient(180deg, rgba(15,23,42,.75), rgba(15,23,42,.45));
+        box-shadow: 0 12px 30px rgba(0,0,0,.25);
+      }
+      .card-h{
+        padding:12px 14px;
+        border-bottom:1px solid var(--border);
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+      }
+      .card-h .h-title{display:flex; align-items:center; gap:10px; font-weight:600;}
+      .card-b{padding:12px 14px;}
+      .toolbar{
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        align-items:center;
+        justify-content:space-between;
+      }
+      .inputs{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap:10px;
+        width: 100%;
+      }
+      .file{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px dashed rgba(255,255,255,.18);
+        background: rgba(2,6,23,.45);
+        cursor:pointer;
+        transition: border-color .15s ease, background .15s ease;
+        min-width: 0;
+      }
+      .file:hover{border-color: rgba(96,165,250,.55); background: rgba(2,6,23,.60);}
+      .file input{display:none;}
+      .file .meta{min-width:0;}
+      .file .name{font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 100%;}
+      .file .hint{font-size:12px; color:var(--muted); margin-top:2px;}
+      .actions{display:flex; gap:8px; align-items:center; justify-content:flex-end;}
+      .btn{
+        border:1px solid var(--border);
+        background: rgba(15,23,42,.55);
+        color:var(--text);
+        padding:9px 12px;
+        border-radius:12px;
+        cursor:pointer;
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        font-weight:600;
+        font-size:13px;
+        transition: transform .05s ease, background .15s ease;
+      }
+      .btn:active{transform: translateY(1px);}
+      .btn:disabled{opacity:.55; cursor:not-allowed;}
+      .btn.primary{background: rgba(96,165,250,.18); border-color: rgba(96,165,250,.35);}
+      .btn.primary:hover{background: rgba(96,165,250,.24);}
+      .btn.ghost:hover{background: rgba(255,255,255,.06);}
+      .toggle{
+        display:inline-flex;
+        align-items:center;
+        gap:10px;
+        padding:8px 10px;
+        border-radius:12px;
+        border:1px solid var(--border);
+        background: rgba(2,6,23,.35);
+        color:var(--muted);
+        user-select:none;
+      }
+      .toggle input{accent-color: var(--accent);}
+      .input{
+        display:inline-flex;
+        align-items:center;
+        gap:10px;
+        padding:8px 10px;
+        border-radius:12px;
+        border:1px solid var(--border);
+        background: rgba(2,6,23,.35);
+        color:var(--muted);
+        user-select:none;
+      }
+      .input input{
+        width:120px;
+        padding:6px 8px;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.14);
+        background: rgba(15,23,42,.55);
+        color: var(--text);
+        outline: none;
+      }
+      .input input::placeholder{color: rgba(229,231,235,.55);}
+      .doc-diff{padding: 0;}
+      .doc-shell{padding: 12px 14px;}
+
+      .doc-diff { padding: 12px 16px 48px; }
+      .diff-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: rgba(2,6,23,.35); }
+      .diff-row { display: contents; }
+      .diff-cell { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      .diff-cell.left { border-right: 1px solid rgba(255,255,255,.08); }
+      .diff-cell.empty { background: rgba(255,255,255,.03); }
+      .diff-row.kind-inserted .diff-cell.right { background: rgba(52,211,153,.10); }
+      .diff-row.kind-deleted .diff-cell.left { background: rgba(251,113,133,.10); }
+      ins { background: rgba(52,211,153,.25); text-decoration: none; }
+      del { background: rgba(251,113,133,.25); text-decoration: line-through; }
+      .diff-cell{overflow-wrap:anywhere; word-break:break-word; min-width: 0;}
+      .diff-cell p, .diff-cell h1, .diff-cell h2, .diff-cell h3, .diff-cell h4, .diff-cell h5, .diff-cell h6{margin:.25em 0;}
+      .diff-cell ul, .diff-cell ol{margin:.25em 0; padding-left:1.1em; list-style-position: inside;}
+      .diff-cell li{margin:.1em 0;}
+      .diff-only .diff-row.kind-matched{display:none;}
+
+      .tip { border: 1px solid rgba(96,165,250,.35); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: rgba(96,165,250,.10); font-size: 12px; color: rgba(229,231,235,.92); line-height: 1.4; }
+      .risk-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: rgba(2,6,23,.25); }
+      .risk-item .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .risk-item[data-level="high"] { border-color: rgba(251,113,133,.55); }
+      .risk-item[data-level="medium"] { border-color: rgba(251,191,36,.55); }
+      .risk-item[data-level="low"] { border-color: rgba(52,211,153,.45); }
+      .risk-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+      .risk-title { font-weight: 700; display:flex; align-items:center; gap:8px; min-width: 0; }
+      .risk-title .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .risk-actions { display:flex; gap:8px; align-items:center; flex-shrink: 0; }
+      .risk-toggle { width: 30px; height: 30px; border-radius: 10px; border: 1px solid rgba(255,255,255,.10); background: rgba(15,23,42,.40); color: rgba(229,231,235,.85); cursor: pointer; display:inline-flex; align-items:center; justify-content:center; }
+      .risk-item.expanded .risk-toggle { background: rgba(15,23,42,.60); }
+      .risk-item.expanded .risk-toggle svg { transform: rotate(90deg); }
+      .risk-toggle svg { transition: transform .12s ease; }
+      .mini-btn { height: 30px; padding: 0 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.10); background: rgba(15,23,42,.40); color: rgba(229,231,235,.85); cursor: pointer; font-weight: 600; font-size: 12px; }
+      .mini-btn:hover { background: rgba(255,255,255,.06); }
+      .risk-summary { margin-top: 8px; }
+      .risk-body { margin-top: 10px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; }
+      .risk-body .k { color: rgba(229,231,235,.85); font-weight: 700; font-size: 12px; margin-top: 10px; }
+      .risk-body .k:first-child { margin-top: 0; }
+      .risk-body ul { margin: 6px 0 0; padding-left: 18px; }
+      .risk-body li { margin: 4px 0; color: rgba(229,231,235,.92); }
+      .risk-card.collapsed .card-b { display: none; }
+      body.risk-collapsed .risk-card .card-h { flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+      body.risk-collapsed .risk-card .h-title span { display: none; }
+      body.risk-collapsed .risk-card #riskMeta { display: none; }
+      .icon{width:16px;height:16px;display:inline-block;vertical-align:middle;fill:currentColor;opacity:.9;}
+      .mono{font-variant-numeric: tabular-nums;}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h7l5 5v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V8h4.5L14 3.5zM8 12h8v1.5H8V12zm0 4h8v1.5H8V16zm0-8h5v1.5H8V8z"/></svg>
+        <div>
+          <div class="title">合同对比与风险分析</div>
+          <div class="subtitle">块级对齐 · 差异高亮 · 异步风险建议 · 可导出 PDF</div>
+        </div>
+      </div>
+      <div class="status-pill mono" id="status"></div>
+      <div class="progress" id="progress"><div class="bar"></div></div>
+    </header>
+    <main>
+      <section class="left">
+        <div class="card">
+          <div class="card-h">
+            <div class="h-title">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 1 7 7v1h1a2 2 0 0 1 2 2v6a4 4 0 0 1-4 4H8a6 6 0 0 1 0-12h1V9a7 7 0 0 1 7-7zm-5 12a4 4 0 1 0 0 8h10a2 2 0 0 0 2-2v-6H7zm5-10a5 5 0 0 0-5 5v1h10V9a5 5 0 0 0-5-5z"/></svg>
+              <span>上传并对比</span>
+            </div>
+            <div class="actions">
+              <label class="toggle">
+                <input type="checkbox" id="aiMode" checked />
+                <span>AI</span>
+              </label>
+              <button class="btn ghost" id="resetBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6V3L8 7l4 4V8a4 4 0 1 1-4 4H6a6 6 0 1 0 6-6z"/></svg>
+                重置
+              </button>
+              <button class="btn primary" id="submitBtn" type="submit" form="form">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h6l-2 2 1.4 1.4L13.8 10 8.4 4.6 7 6l2 2H3v4zm18-8H11v2h10v12H11v2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/></svg>
+                开始对比
+              </button>
+            </div>
+          </div>
+          <div class="card-b">
+            <form id="form">
+              <div class="inputs">
+                <label class="file">
+                  <input id="leftFile" type="file" name="leftFile" accept=".docx,.pdf" required />
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l2 2h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2z"/></svg>
+                  <div class="meta">
+                    <div class="name" id="leftName">旧版本（点击选择 .docx）</div>
+                    <div class="hint">用于展示左栏内容</div>
+                  </div>
+                </label>
+                <label class="file">
+                  <input id="rightFile" type="file" name="rightFile" accept=".docx,.pdf" required />
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l2 2h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2z"/></svg>
+                  <div class="meta">
+                    <div class="name" id="rightName">新版本（点击选择 .docx）</div>
+                    <div class="hint">用于展示右栏内容</div>
+                  </div>
+                </label>
+              </div>
+              <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <label class="toggle">
+                  <input type="checkbox" id="ignoreSectionNumber" name="ignoreSectionNumber" checked />
+                  <span>忽略章节号</span>
+                </label>
+                <label class="toggle">
+                  <span>分段规则</span>
+                  <select id="chunkLevel" name="chunkLevel" style="height:30px; border-radius:10px; border:1px solid rgba(255,255,255,.14); background: rgba(15,23,42,.55); color: var(--text); padding: 0 8px;">
+                    <option value="1">一级章节</option>
+                    <option value="2" selected>二级章节</option>
+                  </select>
+                </label>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div style="height:12px;"></div>
+
+        <div class="card doc-diff">
+          <div class="card-h">
+            <div class="h-title">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2H4V4zm0 14h16v2H4v-2zm0-7h16v2H4v-2z"/></svg>
+              <span>对比结果</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <label class="toggle">
+                <input type="checkbox" id="diffOnly" />
+                <span>只显示差异</span>
+              </label>
+              <button class="btn ghost" id="exportBtn" type="button" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16l4-5h-3V4h-2v7H8l4 5zm8 2v2H4v-2h16z"/></svg>
+                导出 PDF
+              </button>
+              <a class="btn ghost" id="pdfLink" href="#" style="display:none;" target="_blank" rel="noreferrer">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-6zm1 7V3.5L18.5 9H15zM8 13h8v1.5H8V13zm0 3h8v1.5H8V16z"/></svg>
+                下载 PDF
+              </a>
+              <div class="status-pill mono" id="compareMeta"></div>
+            </div>
+          </div>
+          <div class="doc-shell" id="result"></div>
+        </div>
+      </section>
+
+      <aside class="right">
+        <div class="card risk-card collapsed" id="riskCard">
+          <div class="card-h">
+            <div class="h-title">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20zm1-5v-2h-2v2h2zm0-4V7h-2v6h2z"/></svg>
+              <span>风险建议</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="mini-btn" id="riskAreaToggle" type="button" aria-expanded="false">展开</button>
+              <div class="status-pill mono" id="riskMeta"></div>
+            </div>
+          </div>
+          <div class="card-b">
+            <div id="sectionTip" class="tip" style="display:none;"></div>
+            <div id="risks"></div>
+          </div>
+        </div>
+      </aside>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
