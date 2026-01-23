@@ -6,23 +6,30 @@ exports.getOpenAiConfig = getOpenAiConfig;
 exports.callOpenAiJson = callOpenAiJson;
 const env_1 = require("../env");
 function getLlmConfig() {
+    const normalizeEnvText = (s) => {
+        const t = String(s ?? "").trim();
+        if (!t)
+            return "";
+        const m = /^([`'"])([\s\S]*)\1$/.exec(t);
+        return (m ? m[2] : t).trim();
+    };
     const providerRaw = ((0, env_1.envOptional)("LLM_PROVIDER") ?? "").trim().toLowerCase();
     const sfKey = (0, env_1.envOptional)("SILICONFLOW_API_KEY");
     const oaKey = (0, env_1.envOptional)("OPENAI_API_KEY");
-    const oaBaseUrl = ((0, env_1.envOptional)("OPENAI_BASE_URL") ?? "").trim();
+    const oaBaseUrl = normalizeEnvText((0, env_1.envOptional)("OPENAI_BASE_URL"));
     const provider = providerRaw === "siliconflow" || providerRaw === "openai" ? providerRaw : "";
     if (provider === "siliconflow" || (!provider && sfKey)) {
         if (!sfKey)
             return null;
         const model = (0, env_1.envOptional)("SILICONFLOW_MODEL") ?? "Qwen/Qwen2.5-72B-Instruct";
-        const baseUrl = (0, env_1.envOptional)("SILICONFLOW_BASE_URL") ?? "https://api.siliconflow.cn/v1";
+        const baseUrl = normalizeEnvText((0, env_1.envOptional)("SILICONFLOW_BASE_URL")) || "https://api.siliconflow.cn/v1";
         return { provider: "siliconflow", apiKey: sfKey, model, baseUrl };
     }
     if (provider === "openai" || (!provider && oaKey)) {
-        if (!oaKey)
+        if (!oaKey && !oaBaseUrl)
             return null;
         const model = (0, env_1.envOptional)("OPENAI_MODEL") ?? "gpt-4.1-mini";
-        return { provider: "openai", apiKey: oaKey, model, baseUrl: oaBaseUrl || undefined };
+        return { provider: "openai", apiKey: oaKey ?? "", model, baseUrl: oaBaseUrl || undefined };
     }
     return null;
 }
@@ -107,6 +114,10 @@ async function callLlmJson(params) {
         const head = text.slice(0, 500).replace(/\s+/g, " ").trim();
         throw new Error(`LLM returned non-JSON output: ${head}`);
     };
+    const authHeaders = (apiKey) => {
+        const k = String(apiKey ?? "").trim();
+        return k ? { Authorization: `Bearer ${k}` } : {};
+    };
     if (params.cfg.provider === "openai") {
         const baseUrl = (params.cfg.baseUrl ?? "").trim().replace(/\/+$/, "");
         const apiStyleRaw = ((0, env_1.envOptional)("OPENAI_API_STYLE") ?? "").trim().toLowerCase();
@@ -117,7 +128,7 @@ async function callLlmJson(params) {
             const res = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
                 method: "POST",
                 headers: {
-                    Authorization: `Bearer ${params.cfg.apiKey}`,
+                    ...authHeaders(params.cfg.apiKey),
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
@@ -144,7 +155,7 @@ async function callLlmJson(params) {
         const res = await fetchWithTimeout(endpoint, {
             method: "POST",
             headers: {
-                Authorization: `Bearer ${params.cfg.apiKey}`,
+                ...authHeaders(params.cfg.apiKey),
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -171,7 +182,7 @@ async function callLlmJson(params) {
     const res = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
-            Authorization: `Bearer ${params.cfg.apiKey}`,
+            ...authHeaders(params.cfg.apiKey),
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
