@@ -191,6 +191,46 @@ function coalesceRunInOrder(
       .trim();
   };
 
+  const getTextBeforeColon = (text: string): string => {
+    const s = strip(text).trim();
+    const colonIndex = s.search(/[:：∶︰﹕]/);
+    return colonIndex !== -1 ? s.slice(0, colonIndex).trim() : s;
+  };
+
+  const isDatePlaceholderMatch = (textA: string, textB: string): boolean => {
+    const sA = strip(textA).trim();
+    const sB = strip(textB).trim();
+    
+    const placeholderPatterns = [
+      /年\s*月\s*日/,
+      /YYYY[/-]?MM[/-]?DD/,
+      /\{日期\}/,
+      /\[日期\]/
+    ];
+    
+    const datePatterns = [
+      /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日/,
+      /\d{4}[-/]\d{1,2}[-/]\d{1,2}/
+    ];
+    
+    const hasPlaceholder = placeholderPatterns.some(pattern => 
+      pattern.test(sA) || pattern.test(sB)
+    );
+    
+    const hasDate = datePatterns.some(pattern => 
+      pattern.test(sA) || pattern.test(sB)
+    );
+    
+    if (!hasPlaceholder || !hasDate) return false;
+    
+    // 检查除了日期部分外的内容是否相似
+    const cleanA = sA.replace(/年\s*月\s*日|[{\[]日期[}\]]|YYYY[/-]?MM[/-]?DD|\d{4}[-/\s]*\d{1,2}[-/\s]*\d{1,2}/g, "");
+    const cleanB = sB.replace(/年\s*月\s*日|[{\[]日期[}\]]|YYYY[/-]?MM[/-]?DD|\d{4}[-/\s]*\d{1,2}[-/\s]*\d{1,2}/g, "");
+    
+    const similarity = diceCoefficient(cleanA, cleanB);
+    return similarity >= 0.8;
+  };
+
   const score = (a: Block | undefined, b: Block | undefined): number => {
     const ca = canonicalAfterStrip(a);
     const cb = canonicalAfterStrip(b);
@@ -198,6 +238,19 @@ function coalesceRunInOrder(
     const ka = strip(a?.text ?? "").trim();
     const kb = strip(b?.text ?? "").trim();
     if (!ka || !kb) return 0;
+    
+    // Check for date placeholder match
+    if (isDatePlaceholderMatch(a?.text ?? "", b?.text ?? "")) {
+      return 0.95; // High score for date placeholder match
+    }
+    
+    // Check for same content before colon
+    const beforeColonA = getTextBeforeColon(a?.text ?? "");
+    const beforeColonB = getTextBeforeColon(b?.text ?? "");
+    if (beforeColonA && beforeColonB && beforeColonA === beforeColonB) {
+      return 0.95; // High score for same content before colon
+    }
+    
     return diceCoefficient(ka, kb);
   };
 
@@ -208,6 +261,18 @@ function coalesceRunInOrder(
     const sa = strip(a?.text ?? "").trim();
     const sb = strip(b?.text ?? "").trim();
     if (!sa || !sb) return false;
+
+    // Check for date placeholder match
+    if (isDatePlaceholderMatch(a?.text ?? "", b?.text ?? "")) {
+      return true;
+    }
+
+    // Check if content before colon matches
+    const beforeColonA = getTextBeforeColon(a?.text ?? "");
+    const beforeColonB = getTextBeforeColon(b?.text ?? "");
+    if (beforeColonA && beforeColonB && beforeColonA === beforeColonB) {
+      return true;
+    }
 
     const aLen = sa.length;
     const bLen = sb.length;
@@ -247,11 +312,23 @@ function coalesceRunInOrder(
     const beforeLabel = lb ? getLeadingSectionLabel(lb.text) : null;
     const afterLabel = rb ? getLeadingSectionLabel(rb.text) : null;
     const sectionNumberChanged = beforeLabel !== afterLabel;
+    
+    // Check if content before colon matches but content after differs
+    const beforeColonA = getTextBeforeColon(lb?.text ?? "");
+    const beforeColonB = getTextBeforeColon(rb?.text ?? "");
     const contentSameAfterStripping =
       options.ignoreSectionNumber && stripSectionNoise(lb?.text ?? "") === stripSectionNoise(rb?.text ?? "");
+    
+    let kind: RowKind = contentSameAfterStripping ? "matched" : "modified";
+    
+    // If content before colon matches but actual content differs, mark as modified
+    if (beforeColonA && beforeColonB && beforeColonA === beforeColonB && !contentSameAfterStripping) {
+      kind = "modified";
+    }
+    
     out.push({
       rowId: d.rowId,
-      kind: contentSameAfterStripping ? "matched" : "modified",
+      kind,
       leftBlockId: d.leftBlockId,
       rightBlockId: ins.rightBlockId,
       meta: options.ignoreSectionNumber && sectionNumberChanged

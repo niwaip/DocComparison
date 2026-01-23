@@ -11,7 +11,7 @@ const promises_1 = __importDefault(require("node:fs/promises"));
 const node_path_1 = __importDefault(require("node:path"));
 const env_1 = require("./env");
 async function ensureArtifacts(compareId) {
-    const base = (0, env_1.env)("ARTIFACTS_DIR", "/data/artifacts");
+    const base = "./artifacts";
     const dir = node_path_1.default.join(base, compareId);
     await promises_1.default.mkdir(dir, { recursive: true });
     return {

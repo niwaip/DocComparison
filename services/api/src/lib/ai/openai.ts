@@ -159,7 +159,9 @@ export async function callLlmJson(params: {
         throw new Error(`OpenAI-compatible error: ${res.status} ${t}`);
       }
       const json: any = await res.json();
-      const text = String(json?.choices?.[0]?.message?.content ?? "").trim();
+      const content = String(json?.choices?.[0]?.message?.content ?? "").trim();
+      const reasoningContent = String(json?.choices?.[0]?.message?.reasoning_content ?? "").trim();
+      const text = content || reasoningContent;
       if (!text) throw new Error("OpenAI-compatible returned empty message.content");
       return parseModelJson(text);
     }
@@ -213,7 +215,9 @@ export async function callLlmJson(params: {
     throw new Error(`SiliconFlow error: ${res.status} ${t}`);
   }
   const json: any = await res.json();
-  const text = String(json?.choices?.[0]?.message?.content ?? "").trim();
+  const content = String(json?.choices?.[0]?.message?.content ?? "").trim();
+  const reasoningContent = String(json?.choices?.[0]?.message?.reasoning_content ?? "").trim();
+  const text = content || reasoningContent;
   if (!text) throw new Error("SiliconFlow returned empty message.content");
   return parseModelJson(text);
 }
