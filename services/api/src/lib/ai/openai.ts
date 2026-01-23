@@ -13,6 +13,7 @@ export function getLlmConfig(): LlmConfig | null {
   const providerRaw = (envOptional("LLM_PROVIDER") ?? "").trim().toLowerCase();
   const sfKey = envOptional("SILICONFLOW_API_KEY");
   const oaKey = envOptional("OPENAI_API_KEY");
+  const oaBaseUrl = (envOptional("OPENAI_BASE_URL") ?? "").trim();
 
   const provider: LlmProvider | "" =
     providerRaw === "siliconflow" || providerRaw === "openai" ? (providerRaw as LlmProvider) : "";
@@ -27,7 +28,7 @@ export function getLlmConfig(): LlmConfig | null {
   if (provider === "openai" || (!provider && oaKey)) {
     if (!oaKey) return null;
     const model = envOptional("OPENAI_MODEL") ?? "gpt-4.1-mini";
-    return { provider: "openai", apiKey: oaKey, model };
+    return { provider: "openai", apiKey: oaKey, model, baseUrl: oaBaseUrl || undefined };
   }
 
   return null;
@@ -117,7 +118,42 @@ export async function callLlmJson(params: {
   };
 
   if (params.cfg.provider === "openai") {
-    const res = await fetchWithTimeout("https://api.openai.com/v1/responses", {
+    const baseUrl = (params.cfg.baseUrl ?? "").trim().replace(/\/+$/, "");
+    const apiStyleRaw = (envOptional("OPENAI_API_STYLE") ?? "").trim().toLowerCase();
+    const apiStyle =
+      apiStyleRaw === "responses" || apiStyleRaw === "chat" || apiStyleRaw === "chat_completions"
+        ? apiStyleRaw
+        : "";
+
+    if (baseUrl && (apiStyle === "chat" || apiStyle === "chat_completions" || (!apiStyle && !/api\.openai\.com/i.test(baseUrl)))) {
+      const res = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${params.cfg.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: params.cfg.model,
+          messages: [
+            { role: "system", content: params.system },
+            { role: "user", content: params.user }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2
+        })
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`OpenAI-compatible error: ${res.status} ${t}`);
+      }
+      const json: any = await res.json();
+      const text = String(json?.choices?.[0]?.message?.content ?? "").trim();
+      if (!text) throw new Error("OpenAI-compatible returned empty message.content");
+      return parseModelJson(text);
+    }
+
+    const endpoint = baseUrl ? `${baseUrl}/responses` : "https://api.openai.com/v1/responses";
+    const res = await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${params.cfg.apiKey}`,

@@ -24,8 +24,45 @@ const aiModalEl = document.getElementById("aiModal");
 const aiModalContentEl = document.getElementById("aiModalContent");
 const aiModalCloseEl = document.getElementById("aiModalClose");
 const aiModalBackdropEl = document.getElementById("aiModalBackdrop");
+const prevDiffBtn = document.getElementById("prevDiffBtn");
+const nextDiffBtn = document.getElementById("nextDiffBtn");
+const topBtn = document.getElementById("topBtn");
+const diffNavMetaEl = document.getElementById("diffNavMeta");
 
 let currentCompareId = null;
+let diffNavRows = [];
+let diffNavIndex = -1;
+
+function refreshDiffNav() {
+  diffNavRows = Array.from(
+    resultEl.querySelectorAll(".diff-row.kind-modified, .diff-row.kind-inserted, .diff-row.kind-deleted")
+  );
+  if (diffNavIndex >= diffNavRows.length) diffNavIndex = diffNavRows.length - 1;
+  if (diffNavIndex < 0 && diffNavRows.length > 0) diffNavIndex = 0;
+  if (diffNavMetaEl) diffNavMetaEl.textContent = diffNavRows.length ? `差异 ${diffNavIndex + 1}/${diffNavRows.length}` : "无差异";
+  const enabled = diffNavRows.length > 0;
+  if (prevDiffBtn) prevDiffBtn.disabled = !enabled;
+  if (nextDiffBtn) nextDiffBtn.disabled = !enabled;
+  if (topBtn) topBtn.disabled = !enabled;
+}
+
+function clearActiveDiff() {
+  const active = resultEl.querySelectorAll(".diff-cell.active-diff-cell");
+  for (const el of active) el.classList.remove("active-diff-cell");
+}
+
+function goToDiff(index) {
+  if (!diffNavRows.length) return;
+  const i = Math.max(0, Math.min(diffNavRows.length - 1, index));
+  diffNavIndex = i;
+  const row = diffNavRows[i];
+  if (!row) return;
+  clearActiveDiff();
+  const cells = row.querySelectorAll(".diff-cell");
+  for (const c of cells) c.classList.add("active-diff-cell");
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (diffNavMetaEl) diffNavMetaEl.textContent = `差异 ${diffNavIndex + 1}/${diffNavRows.length}`;
+}
 
 function setStatus(text) {
   statusEl.textContent = text || "就绪";
@@ -434,6 +471,25 @@ diffOnlyEl.addEventListener("change", () => {
   else resultEl.classList.remove("diff-only");
 });
 
+if (prevDiffBtn) {
+  prevDiffBtn.addEventListener("click", () => {
+    if (!diffNavRows.length) return;
+    goToDiff(Math.max(0, diffNavIndex - 1));
+  });
+}
+if (nextDiffBtn) {
+  nextDiffBtn.addEventListener("click", () => {
+    if (!diffNavRows.length) return;
+    goToDiff(Math.min(diffNavRows.length - 1, diffNavIndex + 1));
+  });
+}
+if (topBtn) {
+  topBtn.addEventListener("click", () => {
+    if (!diffNavRows.length) return;
+    goToDiff(0);
+  });
+}
+
 resultEl.addEventListener("click", async (e) => {
   const btn = e.target?.closest?.(".ai-suggest-btn");
   if (!btn) return;
@@ -500,6 +556,12 @@ function resetUi() {
   pdfLink.style.display = "none";
   diffOnlyEl.checked = false;
   resultEl.classList.remove("diff-only");
+  diffNavIndex = -1;
+  diffNavRows = [];
+  if (diffNavMetaEl) diffNavMetaEl.textContent = "";
+  if (prevDiffBtn) prevDiffBtn.disabled = true;
+  if (nextDiffBtn) nextDiffBtn.disabled = true;
+  if (topBtn) topBtn.disabled = true;
   setStatus("");
 }
 
@@ -592,6 +654,7 @@ formEl.addEventListener("submit", async (e) => {
     const data = await res.json();
 
     resultEl.innerHTML = data?.diff?.diffHtml || "";
+    refreshDiffNav();
     updateSectionTip(data?.diff?.meta);
     const compareId = data?.compareId;
     currentCompareId = compareId;
@@ -601,8 +664,17 @@ formEl.addEventListener("submit", async (e) => {
     if (data?.ai?.mode === "async" && data?.ai?.status === "pending") {
       setStatus("AI 分析中…");
       const finalData = await pollAi(compareId);
-      renderAiResult(finalData?.ai?.result);
-      setStatus(finalData?.ai?.status === "done" ? "完成" : `AI：${finalData?.ai?.status}`);
+      if (finalData?.ai?.status === "done") {
+        renderAiResult(finalData?.ai?.result);
+        setStatus("完成");
+      } else {
+        const reason = String(finalData?.ai?.error || finalData?.ai?.status || "failed");
+        renderAiResult(null);
+        riskMetaEl.textContent = "失败";
+        sectionTipEl.style.display = "block";
+        sectionTipEl.textContent = `AI 失败：${reason}`;
+        setStatus(`AI 失败：${reason}`);
+      }
     } else {
       renderAiResult(data?.ai?.result);
       setStatus("完成");

@@ -182,8 +182,9 @@
       .diff-cell.empty { background: rgba(255,255,255,.03); }
       .diff-row.kind-inserted .diff-cell.right { background: rgba(52,211,153,.10); }
       .diff-row.kind-deleted .diff-cell.left { background: rgba(251,113,133,.10); }
-      ins { background: rgba(52,211,153,.25); text-decoration: none; }
-      del { background: rgba(251,113,133,.25); text-decoration: line-through; }
+      ins { background: rgba(34,197,94,.32); text-decoration: none; border-bottom: 2px solid rgba(34,197,94,.85); border-radius: 4px; padding: 0 1px; }
+      del { background: rgba(239,68,68,.30); text-decoration: line-through; border-bottom: 2px solid rgba(239,68,68,.65); border-radius: 4px; padding: 0 1px; }
+      .diff-cell.active-diff-cell{outline:2px solid rgba(96,165,250,.65); outline-offset:-2px;}
       .diff-cell{overflow-wrap:break-word; word-break:normal; min-width: 0;}
       .cell-inner{display:flex; align-items:flex-start; gap:8px;}
       .ai-suggest-btn{
@@ -343,6 +344,18 @@
                 <input type="checkbox" id="diffOnly" />
                 <span>只显示差异</span>
               </label>
+              <button class="btn ghost" id="prevDiffBtn" type="button" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4L14 6l-6 6 6 6 1.4-1.4L10.8 12l4.6-4.6z"/></svg>
+                上一处
+              </button>
+              <button class="btn ghost" id="nextDiffBtn" type="button" disabled>
+                下一处
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 16.6L10 18l6-6-6-6-1.4 1.4L13.2 12l-4.6 4.6z"/></svg>
+              </button>
+              <button class="btn ghost" id="topBtn" type="button" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8l6 6-1.4 1.4L12 10.8 7.4 15.4 6 14l6-6z"/></svg>
+                顶部
+              </button>
               <button class="btn ghost" id="exportBtn" type="button" disabled>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16l4-5h-3V4h-2v7H8l4 5zm8 2v2H4v-2h16z"/></svg>
                 导出 PDF
@@ -351,6 +364,7 @@
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-6zm1 7V3.5L18.5 9H15zM8 13h8v1.5H8V13zm0 3h8v1.5H8V16z"/></svg>
                 下载 PDF
               </a>
+              <div class="status-pill mono" id="diffNavMeta"></div>
               <div class="status-pill mono" id="compareMeta"></div>
             </div>
           </div>

@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.analyzeRisks = analyzeRisks;
 exports.analyzeSnippet = analyzeSnippet;
-const heuristic_1 = require("./heuristic");
 const openai_1 = require("./openai");
 const env_1 = require("../env");
 const text_1 = require("../text");
@@ -53,26 +52,7 @@ async function analyzeRisks(params) {
         return Math.max(10, Math.min(200, n));
     })();
     if (!cfg) {
-        const overall = {
-            summary: `共检测到 ${withSection.length} 处变更，覆盖 ${sectionLabels.length} 个一级章节。建议优先复核：责任、付款、终止、争议解决、数据合规等高风险条款。`,
-            keyRisks: [],
-            suggestions: ["先通读变更汇总，再逐章核对关键条款与定义", "对涉及金额/期限/责任上限/争议管辖的变更做重点标注与复核"],
-            changedSectionLabels: sectionLabels
-        };
-        const sections = sectionLabels.map((label) => {
-            const items = withSection.filter((x) => x.sectionLabel === label);
-            const relatedRowIds = items.slice(0, sectionMaxChanges).map((x) => x.rowId);
-            const relatedBlockIds = items.slice(0, sectionMaxChanges).map((x) => x.blockId);
-            return {
-                sectionLabel: label,
-                summary: `该一级章节共 ${items.length} 处变更，建议按条款逐项复核。`,
-                keyRisks: [],
-                suggestions: ["核对变更是否影响权利义务边界、触发条件与责任承担"],
-                relatedRowIds,
-                relatedBlockIds
-            };
-        });
-        return { schemaVersion: "2", compareId: params.compareId, overall, sections, meta: { provider: "heuristic" } };
+        throw new Error("LLM not configured. Please set LLM_PROVIDER and corresponding API key.");
     }
     const minIntervalMs = (() => {
         const raw = (0, env_1.envOptional)("LLM_MIN_INTERVAL_MS");
@@ -192,7 +172,6 @@ async function analyzeRisks(params) {
             afterText: x.afterText
         }))
     }, null, 2);
-    let succeededCalls = 0;
     let overall = { ...heuristicOverall, changedSectionLabels: orderedSectionLabels };
     try {
         const overallRaw = await callJsonControlled(overallSystem, overallUser);
@@ -205,9 +184,11 @@ async function analyzeRisks(params) {
                 ? overallAny.changedSectionLabels.map((x) => String(x))
                 : orderedSectionLabels
         };
-        succeededCalls++;
     }
-    catch { }
+    catch (e) {
+        const msg = String(e?.message ?? e ?? "");
+        throw new Error(`LLM overall call failed: ${msg}`);
+    }
     completedSteps++;
     if (params.onProgress)
         await params.onProgress({ completed: completedSteps, total: totalSteps, phase: "overall" });
@@ -266,29 +247,21 @@ async function analyzeRisks(params) {
                 section.suggestions = ["核对变更是否影响权利义务边界、触发条件与责任承担"];
             }
             sections.push(section);
-            succeededCalls++;
         }
-        catch {
-            sections.push({
-                sectionLabel: label,
-                summary: `该一级章节共 ${items.length} 处变更，建议按条款逐项复核。`,
-                keyRisks: [],
-                suggestions: ["核对变更是否影响权利义务边界、触发条件与责任承担"],
-                relatedRowIds: items.slice(0, sectionMaxChanges).map((x) => x.rowId),
-                relatedBlockIds: items.slice(0, sectionMaxChanges).map((x) => x.blockId)
-            });
+        catch (e) {
+            const msg = String(e?.message ?? e ?? "");
+            throw new Error(`LLM section call failed (${label}): ${msg}`);
         }
         completedSteps++;
         if (params.onProgress)
             await params.onProgress({ completed: completedSteps, total: totalSteps, phase: "section", sectionLabel: label });
     }
-    const providerMeta = succeededCalls > 0 ? cfg.provider : "heuristic";
     return {
         schemaVersion: "2",
         compareId: params.compareId,
         overall,
         sections,
-        meta: providerMeta === "heuristic" ? { provider: "heuristic" } : { provider: cfg.provider, model: cfg.model }
+        meta: { provider: cfg.provider, model: cfg.model }
     };
 }
 async function analyzeSnippet(params) {
@@ -306,22 +279,7 @@ async function analyzeSnippet(params) {
     const after = (0, text_1.normalizeText)(params.afterText ?? "");
     const focus = (0, text_1.normalizeText)(params.focusText ?? "");
     if (!cfg) {
-        const h = (0, heuristic_1.analyzeRiskHeuristic)({
-            blockId: `row:${params.rowId}`,
-            beforeText: before || null,
-            afterText: after || null,
-            blockSelector: ""
-        });
-        return {
-            schemaVersion: "1",
-            compareId: params.compareId,
-            rowId: params.rowId,
-            summary: h?.summary ?? "建议人工复核该处变更。",
-            keyPoints: [],
-            risks: h ? [h.analysis] : [],
-            suggestions: h?.recommendations ?? [],
-            meta: { provider: "heuristic" }
-        };
+        throw new Error("LLM not configured. Please set LLM_PROVIDER and corresponding API key.");
     }
     const system = [
         "你是资深法务审核助手。请对选定条款的差异进行快速解析，并输出 JSON。",
@@ -338,35 +296,15 @@ async function analyzeSnippet(params) {
         beforeText: before || null,
         afterText: after || null
     }, null, 2);
-    try {
-        const raw = await (0, openai_1.callLlmJson)({ cfg, system, user });
-        return {
-            schemaVersion: "1",
-            compareId: params.compareId,
-            rowId: params.rowId,
-            summary: String(raw?.summary ?? ""),
-            keyPoints: Array.isArray(raw?.keyPoints) ? raw.keyPoints.map((x) => String(x)) : [],
-            risks: Array.isArray(raw?.risks) ? raw.risks.map((x) => String(x)) : [],
-            suggestions: Array.isArray(raw?.suggestions) ? raw.suggestions.map((x) => String(x)) : [],
-            meta: { provider: cfg.provider, model: cfg.model }
-        };
-    }
-    catch {
-        const h = (0, heuristic_1.analyzeRiskHeuristic)({
-            blockId: `row:${params.rowId}`,
-            beforeText: before || null,
-            afterText: after || null,
-            blockSelector: ""
-        });
-        return {
-            schemaVersion: "1",
-            compareId: params.compareId,
-            rowId: params.rowId,
-            summary: h?.summary ?? "建议人工复核该处变更。",
-            keyPoints: [],
-            risks: h ? [h.analysis] : [],
-            suggestions: h?.recommendations ?? [],
-            meta: { provider: "heuristic" }
-        };
-    }
+    const raw = await (0, openai_1.callLlmJson)({ cfg, system, user });
+    return {
+        schemaVersion: "1",
+        compareId: params.compareId,
+        rowId: params.rowId,
+        summary: String(raw?.summary ?? ""),
+        keyPoints: Array.isArray(raw?.keyPoints) ? raw.keyPoints.map((x) => String(x)) : [],
+        risks: Array.isArray(raw?.risks) ? raw.risks.map((x) => String(x)) : [],
+        suggestions: Array.isArray(raw?.suggestions) ? raw.suggestions.map((x) => String(x)) : [],
+        meta: { provider: cfg.provider, model: cfg.model }
+    };
 }
