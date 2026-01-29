@@ -178,6 +178,36 @@ function coalesceRunInOrder(delRun, insRun, leftMap, rightMap, options) {
             .replace(/\s+/g, "")
             .trim();
     };
+    const getTextBeforeColon = (text) => {
+        const s = strip(text).trim();
+        const colonIndex = s.search(/[:：∶︰﹕]/);
+        return colonIndex !== -1 ? s.slice(0, colonIndex).trim() : s;
+    };
+    const isDatePlaceholderMatch = (textA, textB) => {
+        const sA = strip(textA).trim();
+        const sB = strip(textB).trim();
+        const placeholderPatterns = [
+            /年\s*月\s*日/,
+            /YYYY[/-]?MM[/-]?DD/,
+            /\{日期\}/,
+            /\[日期\]/
+        ];
+        const datePatterns = [
+            /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日/,
+            /\d{4}[-/]\d{1,2}[-/]\d{1,2}/
+        ];
+        const hasPlaceholder = placeholderPatterns.some(pattern => 
+            pattern.test(sA) || pattern.test(sB)
+        );
+        const hasDate = datePatterns.some(pattern => 
+            pattern.test(sA) || pattern.test(sB)
+        );
+        if (!hasPlaceholder || !hasDate) return false;
+        const cleanA = sA.replace(/年\s*月\s*日|[{\[]日期[}\]]|YYYY[/-]?MM[/-]?DD|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}[-/\s]*\d{1,2}[-/\s]*\d{1,2}/g, "");
+        const cleanB = sB.replace(/年\s*月\s*日|[{\[]日期[}\]]|YYYY[/-]?MM[/-]?DD|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}[-/\s]*\d{1,2}[-/\s]*\d{1,2}/g, "");
+        const similarity = (0, text_1.diceCoefficient)(cleanA, cleanB);
+        return similarity >= 0.8;
+    };
     const score = (a, b) => {
         const ca = canonicalAfterStrip(a);
         const cb = canonicalAfterStrip(b);
@@ -187,6 +217,14 @@ function coalesceRunInOrder(delRun, insRun, leftMap, rightMap, options) {
         const kb = strip(b?.text ?? "").trim();
         if (!ka || !kb)
             return 0;
+        if (isDatePlaceholderMatch(a?.text ?? "", b?.text ?? "")) {
+            return 0.95;
+        }
+        const beforeColonA = getTextBeforeColon(a?.text ?? "");
+        const beforeColonB = getTextBeforeColon(b?.text ?? "");
+        if (beforeColonA && beforeColonB && beforeColonA === beforeColonB) {
+            return 0.95;
+        }
         return (0, text_1.diceCoefficient)(ka, kb);
     };
     const isGoodMatch = (a, b) => {
@@ -198,6 +236,14 @@ function coalesceRunInOrder(delRun, insRun, leftMap, rightMap, options) {
         const sb = strip(b?.text ?? "").trim();
         if (!sa || !sb)
             return false;
+        if (isDatePlaceholderMatch(a?.text ?? "", b?.text ?? "")) {
+            return true;
+        }
+        const beforeColonA = getTextBeforeColon(a?.text ?? "");
+        const beforeColonB = getTextBeforeColon(b?.text ?? "");
+        if (beforeColonA && beforeColonB && beforeColonA === beforeColonB) {
+            return true;
+        }
         const aLen = sa.length;
         const bLen = sb.length;
         const maxLen = Math.max(aLen, bLen);
@@ -236,10 +282,17 @@ function coalesceRunInOrder(delRun, insRun, leftMap, rightMap, options) {
         const beforeLabel = lb ? (0, text_1.getLeadingSectionLabel)(lb.text) : null;
         const afterLabel = rb ? (0, text_1.getLeadingSectionLabel)(rb.text) : null;
         const sectionNumberChanged = beforeLabel !== afterLabel;
+        const beforeColonA = getTextBeforeColon(lb?.text ?? "");
+        const beforeColonB = getTextBeforeColon(rb?.text ?? "");
         const contentSameAfterStripping = options.ignoreSectionNumber && (0, text_1.stripSectionNoise)(lb?.text ?? "") === (0, text_1.stripSectionNoise)(rb?.text ?? "");
+        const isDateMatch = isDatePlaceholderMatch(lb?.text ?? "", rb?.text ?? "");
+        let kind = contentSameAfterStripping ? "matched" : "modified";
+        if ((beforeColonA && beforeColonB && beforeColonA === beforeColonB) || isDateMatch) {
+            kind = "modified";
+        }
         out.push({
             rowId: d.rowId,
-            kind: contentSameAfterStripping ? "matched" : "modified",
+            kind: kind,
             leftBlockId: d.leftBlockId,
             rightBlockId: ins.rightBlockId,
             meta: options.ignoreSectionNumber && sectionNumberChanged

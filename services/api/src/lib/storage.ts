@@ -11,7 +11,7 @@ export type CompareArtifacts = {
 };
 
 export async function ensureArtifacts(compareId: string): Promise<CompareArtifacts> {
-  const base = env("ARTIFACTS_DIR", "/data/artifacts");
+  const base = "./artifacts";
   const dir = path.join(base, compareId);
   await fs.mkdir(dir, { recursive: true });
   return {
