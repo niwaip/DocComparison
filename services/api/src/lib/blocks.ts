@@ -33,6 +33,24 @@ export function buildBlocksFromHtml(html: string, chunkLevel?: number): Block[] 
       });
   });
 
+  if (nodes.length === 0) {
+    const clone = body.clone();
+    clone.find("br").replaceWith("\n");
+    const raw = normalizeText(clone.text());
+    const paras = raw
+      .split("\n\n")
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+    nodes = paras.map((p, i) => {
+      const lv = detectHeadingLevel("p", p);
+      const tag = lv ? `h${lv}` : "p";
+      const kind = tagToKind(tag);
+      const escaped = escapeHtml(p).replace(/\n/g, "<br/>");
+      const frag = `<${tag}>${escaped}</${tag}>`;
+      return { kind, headingLevel: lv, structurePath: `body.text[${i}]`, html: frag, text: p };
+    });
+  }
+
   const boilerplateSignature = (text: string): string => {
     const norm = normalizeText(text);
     if (!norm) return "";

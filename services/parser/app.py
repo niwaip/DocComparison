@@ -110,26 +110,39 @@ def _docx_to_elements(path: str) -> list[dict[str, Any]] | None:
 
 def _table_html_from_text(text: str) -> str | None:
     t = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    lines = [x.strip() for x in t.split("\n")]
-    lines = [x for x in lines if x]
+    raw_lines = [str(x or "") for x in t.split("\n")]
+    lines = [x for x in raw_lines if x.strip() or ("\t" in x)]
     if len(lines) < 2:
         return None
 
-    rows: list[list[str]] = []
+    raw_rows: list[list[str]] = []
     for line in lines[:120]:
         if "\t" in line:
-            cells = [c.strip() for c in re.split(r"\t+", line) if c.strip()]
+            cells = [c.strip() for c in line.split("\t")]
         else:
-            cells = [c.strip() for c in re.split(r"[ ]{2,}", line) if c.strip()]
-        if len(cells) >= 2:
-            rows.append(cells[:24])
+            trimmed = line.strip()
+            if not trimmed:
+                cells = [""]
+            else:
+                cells = [c.strip() for c in re.split(r"[ ]{2,}", trimmed)]
+        raw_rows.append(cells[:24])
 
-    if not rows:
+    if not raw_rows:
         return None
+
+    col_n = max((len(r) for r in raw_rows), default=0)
+    if col_n < 2:
+        return None
+    rows: list[list[str]] = []
+    for r in raw_rows:
+        rr = list(r[:col_n])
+        while len(rr) < col_n:
+            rr.append("")
+        rows.append(rr)
 
     html_rows = []
     for r in rows:
-        tds = "".join([f"<td>{c}</td>" for c in r])
+        tds = "".join([f"<td>{_escape_html(str(c or ''))}</td>" for c in r])
         html_rows.append(f"<tr>{tds}</tr>")
     return f"<table><tbody>{''.join(html_rows)}</tbody></table>"
 
@@ -187,10 +200,13 @@ async def general(
                 if suffix.lower() == ".docx":
                     elements = _docx_to_elements(tmp_path)
                 if elements is None:
-                    elements = partition(filename=tmp_path, strategy=strategy)
-            except TypeError:
-                elements = partition(filename=tmp_path)
-            out.extend([_element_to_dict(el) for el in elements])
+                    try:
+                        elements = partition(filename=tmp_path, strategy=strategy)
+                    except TypeError:
+                        elements = partition(filename=tmp_path)
+            except Exception:
+                elements = []
+            out.extend([_element_to_dict(el) for el in (elements or [])])
         finally:
             try:
                 os.unlink(tmp_path)

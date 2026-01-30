@@ -4,7 +4,7 @@ import path from "node:path";
 import express from "express";
 import multer from "multer";
 import sanitizeHtml from "sanitize-html";
-import { docBufferToSafeHtml, docxBufferToSafeHtml } from "./lib/docx";
+import { docBufferToSafeHtml, docxBufferToSafeHtml, docxBufferToSafeHtmlMammoth } from "./lib/docx";
 import { pdfBufferToSafeHtml } from "./lib/pdfInput";
 import { buildBlocksFromHtml } from "./lib/blocks";
 import { alignBlocks } from "./lib/align";
@@ -975,7 +975,7 @@ app.post("/api/compare", upload.fields([{ name: "leftFile", maxCount: 1 }, { nam
 });
 
 app.get("/api/compare/:compareId", async (req, res) => {
-  const compareId = req.params.compareId;
+  const compareId = await resolveCompareId(req.params.compareId);
   const artifacts = await ensureArtifacts(compareId);
   if (!(await fileExists(artifacts.jsonPath))) return res.status(404).send("not found");
   const json = await readJson<CompareJsonV1>(artifacts.jsonPath);
@@ -1027,14 +1027,14 @@ app.get("/api/compare/:compareId", async (req, res) => {
 });
 
 app.get("/api/compare/:compareId/artifact/html", async (req, res) => {
-  const compareId = req.params.compareId;
+  const compareId = await resolveCompareId(req.params.compareId);
   const artifacts = await ensureArtifacts(compareId);
   if (!(await fileExists(artifacts.htmlPath))) return res.status(404).send("not found");
   res.type("text/html").sendFile(artifacts.htmlPath);
 });
 
 app.get("/api/compare/:compareId/artifact/pdf", async (req, res) => {
-  const compareId = req.params.compareId;
+  const compareId = await resolveCompareId(req.params.compareId);
   const artifacts = await ensureArtifacts(compareId);
   const diffOnly = String(req.query?.diffOnly ?? "").trim() === "1";
   const pdfPath = diffOnly ? artifacts.diffPdfPath : artifacts.pdfPath;
@@ -1044,7 +1044,7 @@ app.get("/api/compare/:compareId/artifact/pdf", async (req, res) => {
 
 app.post("/api/compare/:compareId/ai/block", async (req, res) => {
   try {
-    const compareId = req.params.compareId;
+    const compareId = await resolveCompareId(req.params.compareId);
     const blockId = String(req.body?.blockId ?? "").trim();
     const focusText = typeof req.body?.focusText === "string" ? req.body.focusText : null;
     const aiApiKey = typeof req.body?.aiApiKey === "string" ? req.body.aiApiKey : null;
@@ -1081,7 +1081,7 @@ app.post("/api/compare/:compareId/ai/block", async (req, res) => {
 
 app.post("/api/compare/:compareId/ai/snippet", async (req, res) => {
   try {
-    const compareId = req.params.compareId;
+    const compareId = await resolveCompareId(req.params.compareId);
     const rowId = String(req.body?.rowId ?? "").trim();
     const focusText = typeof req.body?.focusText === "string" ? req.body.focusText : null;
     const aiApiKey = typeof req.body?.aiApiKey === "string" ? req.body.aiApiKey : null;
@@ -1118,7 +1118,7 @@ app.post("/api/compare/:compareId/ai/snippet", async (req, res) => {
 
 app.post("/api/compare/:compareId/export/pdf", async (req, res) => {
   try {
-    const compareId = req.params.compareId;
+    const compareId = await resolveCompareId(req.params.compareId);
     const diffOnly = Boolean(req.body?.diffOnly);
     const artifacts = await ensureArtifacts(compareId);
     if (!(await fileExists(artifacts.jsonPath))) return res.status(404).send("not found");
@@ -1199,6 +1199,43 @@ app.get("/api/ai/jobs/:jobId", async (req, res) => {
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {});
 
+async function resolveCompareId(raw: string): Promise<string> {
+  const reqId = String(raw ?? "").trim();
+  if (!reqId) return reqId;
+
+  const artifacts = await ensureArtifacts(reqId);
+  if (await fileExists(artifacts.jsonPath)) return reqId;
+
+  const suffix = reqId.replace(/^cmp_/i, "");
+  if (!/^[a-f0-9]{8}$/i.test(suffix) && !/^[a-f0-9]{16,}$/i.test(suffix)) return reqId;
+
+  const fsP = await import("node:fs/promises");
+  const pathP = await import("node:path");
+  const baseFromEnv = envOptional("ARTIFACTS_DIR");
+  const bases = Array.from(new Set([baseFromEnv, "./artifacts"].filter(Boolean))) as string[];
+
+  const matches: Array<{ id: string; mtime: number }> = [];
+  for (const base of bases) {
+    try {
+      const names = await fsP.readdir(base);
+      for (const name0 of names) {
+        const name = String(name0 ?? "");
+        if (!name.startsWith("cmp_")) continue;
+        if (!name.toLowerCase().endsWith(suffix.toLowerCase())) continue;
+        const dirPath = pathP.join(base, name);
+        const stDir = await fsP.stat(dirPath).catch(() => null);
+        if (!stDir || !stDir.isDirectory()) continue;
+        try {
+          const st = await fsP.stat(pathP.join(dirPath, "compare.json"));
+          matches.push({ id: name, mtime: Number(st.mtimeMs) || 0 });
+        } catch {}
+      }
+    } catch {}
+  }
+  matches.sort((a, b) => b.mtime - a.mtime);
+  return matches[0]?.id ?? reqId;
+}
+
 function summarizeRows(rows: AlignmentRow[]) {
   let matched = 0;
   let modified = 0;
@@ -1241,16 +1278,47 @@ async function bufferToSafeHtml(params: { buffer: Buffer; mimeType: string; file
   const name = String(params.fileName ?? "");
   const lower = name.toLowerCase();
   if (parserProvider === "unstructured") {
-    const html = await unstructuredBufferToSafeHtml({
-      buffer: params.buffer,
-      fileName: name,
-      mimeType: params.mimeType
-    });
+    const isPdf = mt.includes("pdf") || lower.endsWith(".pdf");
     const isDocx = mt.includes("wordprocessingml") || lower.endsWith(".docx");
+    const isDoc = (!isDocx && mt.includes("msword")) || lower.endsWith(".doc");
+
+    let html = "";
+    try {
+      html = await unstructuredBufferToSafeHtml({
+        buffer: params.buffer,
+        fileName: name,
+        mimeType: params.mimeType
+      });
+    } catch {
+      if (isPdf) return pdfBufferToSafeHtml(params.buffer);
+      if (isDocx) {
+        try {
+          const html2 = await docxBufferToSafeHtmlMammoth(params.buffer);
+          if (html2) return html2;
+        } catch {}
+        return docxBufferToSafeHtml(params.buffer);
+      }
+      if (isDoc) return docBufferToSafeHtml(params.buffer);
+      throw new Error(`unstructured failed for: ${params.mimeType} (${params.fileName})`);
+    }
     if (isDocx && !/<\s*table\b/i.test(html)) {
       const text = normalizeText(html.replace(/<[^>]+>/g, " "));
+      try {
+        const html2 = await docxBufferToSafeHtmlMammoth(params.buffer);
+        if (/<\s*table\b/i.test(html2)) return html2;
+        const t2 = normalizeText(html2.replace(/<[^>]+>/g, " "));
+        if (!text && t2) return html2;
+      } catch {}
       if (/(产品名称|规格|型号|数量|单价|总价|合计金额|备注|产地|商标)/.test(text)) {
         return await docxBufferToSafeHtml(params.buffer);
+      }
+    }
+    if (isDoc && !/<\s*table\b/i.test(html)) {
+      const text = normalizeText(html.replace(/<[^>]+>/g, " "));
+      if (/(产品名称|规格|型号|数量|单价|总价|合计金额|备注|产地|商标)/.test(text)) {
+        try {
+          return await docBufferToSafeHtml(params.buffer);
+        } catch {}
       }
     }
     return html;
@@ -1326,6 +1394,40 @@ function stripMarkdownFences(html: string): string {
   return s.trim();
 }
 
+function tableHtmlFromTabText(text: string): string | null {
+  const raw = String(text ?? "")
+    .replace(/\u0000/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+  if (!raw.trim()) return null;
+
+  const lines = raw
+    .split("\n")
+    .map((x) => String(x ?? ""))
+    .filter((x) => x.replace(/[ \t]/g, "").length > 0 || x.includes("\t"));
+  if (lines.length < 2) return null;
+
+  const parseCells = (line: string): string[] => {
+    if (line.includes("\t")) return line.split("\t").map((x) => String(x ?? "").trim());
+    const trimmed = line.trim();
+    if (!trimmed) return [""];
+    return trimmed.split(/[ ]{2,}/g).map((x) => String(x ?? "").trim());
+  };
+
+  let rows = lines.map(parseCells);
+  const colN = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  if (colN < 2) return null;
+
+  rows = rows.map((r) => {
+    const out = r.slice(0, colN);
+    while (out.length < colN) out.push("");
+    return out;
+  });
+
+  const htmlRows = rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("");
+  return `<table><tbody>${htmlRows}</tbody></table>`;
+}
+
 function unstructuredElementsToHtml(elements: any[]): string {
   const out: string[] = [];
   let listItems: string[] = [];
@@ -1336,18 +1438,25 @@ function unstructuredElementsToHtml(elements: any[]): string {
   };
   for (const el of elements) {
     const type = String(el?.type ?? el?.category ?? "").trim();
-    const text = normalizeText(String(el?.text ?? "").replace(/\u0000/g, ""));
+    const rawText0 = String(el?.text ?? "").replace(/\u0000/g, "");
+    const text = normalizeText(rawText0);
     const meta = (el?.metadata ?? {}) as any;
     const textAsHtml = meta?.text_as_html ?? el?.text_as_html ?? "";
     const isTable = /table/i.test(type);
     const isListItem = /listitem/i.test(type);
     const isTitle = type === "Title" || /title/i.test(type);
 
-    if (isTable && textAsHtml) {
+    const htmlCandidate = textAsHtml ? stripMarkdownFences(String(textAsHtml)) : "";
+    if (htmlCandidate && /<\s*table\b/i.test(htmlCandidate)) {
       flushList();
-      const html = stripMarkdownFences(String(textAsHtml));
-      if (/<\s*table\b/i.test(html)) {
-        out.push(html);
+      out.push(htmlCandidate);
+      continue;
+    }
+    if (isTable) {
+      const html2 = tableHtmlFromTabText(rawText0);
+      if (html2) {
+        flushList();
+        out.push(html2);
         continue;
       }
     }

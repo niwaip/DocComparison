@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
 import sanitizeHtml from "sanitize-html";
+import mammoth from "mammoth";
 import { escapeHtml, normalizeText } from "./text";
 
 let sofficeTail: Promise<void> = Promise.resolve();
@@ -80,6 +81,13 @@ export async function docxBufferToSafeHtml(buffer: Buffer): Promise<string> {
     for (const p of expectedHtml) await fs.unlink(p).catch(() => {});
     await fs.rm(expectedDir, { recursive: true, force: true } as any).catch(() => {});
   }
+}
+
+export async function docxBufferToSafeHtmlMammoth(buffer: Buffer): Promise<string> {
+  const out = await mammoth.convertToHtml({ buffer });
+  const html = String((out as any)?.value ?? "");
+  const sanitized = sanitizeHtml(html, sanitizeCfg);
+  return sanitized || "<p></p>";
 }
 
 export async function docBufferToSafeHtml(buffer: Buffer): Promise<string> {
