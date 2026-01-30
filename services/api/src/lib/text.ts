@@ -7,7 +7,7 @@ export function normalizeText(input: string): string {
   out = out
     .replace(/\s+([:：∶︰﹕,，。;；、\)\]）])/g, "$1")
     .replace(/([（(])\s+/g, "$1");
-  const cjkSpace = /([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g;
+  const cjkSpace = /([\u4e00-\u9fff]) ([\u4e00-\u9fff])/g;
   while (cjkSpace.test(out)) out = out.replace(cjkSpace, "$1$2");
   return out;
 }

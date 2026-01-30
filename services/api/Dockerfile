@@ -5,6 +5,7 @@ WORKDIR /app
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN sed -i 's|https\?://dl-cdn.alpinelinux.org/alpine|https://mirrors.tuna.tsinghua.edu.cn/alpine|g' /etc/apk/repositories
+RUN apk add --no-cache antiword libreoffice-writer
 
 COPY package.json package-lock.json ./
 RUN npm config set registry https://registry.npmmirror.com

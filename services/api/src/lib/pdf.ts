@@ -10,6 +10,8 @@ export async function renderPdfFromHtmlFile(params: { htmlPath: string; pdfPath:
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "load" });
+    await page.emulateMediaType("print");
+    await page.evaluateHandle("document.fonts.ready");
     await page.pdf({
       path: params.pdfPath,
       format: "A4",

@@ -12,6 +12,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       ARTIFACTS_DIR: /data/artifacts
+      STANDARD_CONTRACTS_DIR: /data/standard-contracts
       MAX_UPLOAD_MB: "20"
       AI_MODE_DEFAULT: "async"
       LLM_DEBUG: ${LLM_DEBUG:-}
@@ -23,12 +24,18 @@ services:
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
       SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
       SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-tencent/Hunyuan-MT-7B}
+      PARSER_PROVIDER: ${PARSER_PROVIDER:-unstructured}
+      UNSTRUCTURED_URL: http://parser:8000/general/v0/general
+      UNSTRUCTURED_TIMEOUT_MS: ${UNSTRUCTURED_TIMEOUT_MS:-180000}
+      UNSTRUCTURED_API_KEY: ${UNSTRUCTURED_API_KEY:-}
     volumes:
       - artifacts:/data/artifacts
+      - ${STANDARD_CONTRACTS_DIR_HOST:-../doc-com-standard-contracts}:/data/standard-contracts
     ports:
       - "3001:3000"
     depends_on:
       - redis
+      - parser
 
   worker:
     build:
@@ -40,6 +47,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       ARTIFACTS_DIR: /data/artifacts
+      STANDARD_CONTRACTS_DIR: /data/standard-contracts
       LLM_DEBUG: ${LLM_DEBUG:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -49,10 +57,25 @@ services:
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
       SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
       SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-tencent/Hunyuan-MT-7B}
+      PARSER_PROVIDER: ${PARSER_PROVIDER:-unstructured}
+      UNSTRUCTURED_URL: http://parser:8000/general/v0/general
+      UNSTRUCTURED_TIMEOUT_MS: ${UNSTRUCTURED_TIMEOUT_MS:-180000}
+      UNSTRUCTURED_API_KEY: ${UNSTRUCTURED_API_KEY:-}
     volumes:
       - artifacts:/data/artifacts
+      - ${STANDARD_CONTRACTS_DIR_HOST:-../doc-com-standard-contracts}:/data/standard-contracts
     depends_on:
       - redis
+      - parser
+
+  parser:
+    build:
+      context: ./services/parser
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+    restart: unless-stopped
 
 volumes:
   artifacts:

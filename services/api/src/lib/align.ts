@@ -24,7 +24,7 @@ export function alignBlocks(left: Block[], right: Block[], options?: { ignoreSec
     if (stripped === normalized) return b.stableKey;
     const tocish = t.includes("\n") ? t.split("\n").some((x) => looksLikeTocishLine(x)) : looksLikeTocishLine(t);
     if (stripped.length < 10 && !tocish) return b.stableKey;
-    return `k:${b.kind}:${tocish ? "toc:" : ""}${sha1(stripped)}`;
+    return `k:${tocish ? "toc:" : ""}${sha1(stripped)}`;
   };
 
   const leftKeys = left.map((b) => alignKey(b));
@@ -205,13 +205,16 @@ function coalesceRunInOrder(
       /年\s*月\s*日/,
       /YYYY[/-]?MM[/-]?DD/,
       /\{日期\}/,
-      /\[日期\]/
+      /\[日期\]/,
+      /[＿_]{2,}\s*年\s*[＿_]{1,}\s*月\s*[＿_]{1,}\s*日/
     ];
     
     const datePatterns = [
       /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日/,
       /\d{4}[-/]\d{1,2}[-/]\d{1,2}/
     ];
+
+    const ymdAny = /(?:\d{4}|[＿_]{2,})\s*年\s*(?:\d{1,2}|[＿_]{1,})\s*月\s*(?:\d{1,2}|[＿_]{1,})\s*日|\d{4}[-/]\d{1,2}[-/]\d{1,2}|年\s*月\s*日|YYYY[/-]?MM[/-]?DD|[\{\[]日期[\}\]]/g;
     
     const hasPlaceholder = placeholderPatterns.some(pattern => 
       pattern.test(sA) || pattern.test(sB)
@@ -223,12 +226,15 @@ function coalesceRunInOrder(
     
     if (!hasPlaceholder || !hasDate) return false;
     
-    // 检查除了日期部分外的内容是否相似
-    const cleanA = sA.replace(/年\s*月\s*日|[{\[]日期[}\]]|YYYY[/-]?MM[/-]?DD|\d{4}[-/\s]*\d{1,2}[-/\s]*\d{1,2}/g, "");
-    const cleanB = sB.replace(/年\s*月\s*日|[{\[]日期[}\]]|YYYY[/-]?MM[/-]?DD|\d{4}[-/\s]*\d{1,2}[-/\s]*\d{1,2}/g, "");
+    const cleanA = sA.replace(ymdAny, "");
+    const cleanB = sB.replace(ymdAny, "");
     
     const similarity = diceCoefficient(cleanA, cleanB);
-    return similarity >= 0.8;
+    if (similarity < 0.8) return false;
+
+    const normA = sA.toLowerCase().replace(/\s+/g, "").replace(ymdAny, "<date>");
+    const normB = sB.toLowerCase().replace(/\s+/g, "").replace(ymdAny, "<date>");
+    return diceCoefficient(normA, normB) >= 0.9;
   };
 
   const score = (a: Block | undefined, b: Block | undefined): number => {
@@ -239,16 +245,14 @@ function coalesceRunInOrder(
     const kb = strip(b?.text ?? "").trim();
     if (!ka || !kb) return 0;
     
-    // Check for date placeholder match
     if (isDatePlaceholderMatch(a?.text ?? "", b?.text ?? "")) {
-      return 0.95; // High score for date placeholder match
+      return 0.95;
     }
     
-    // Check for same content before colon
     const beforeColonA = getTextBeforeColon(a?.text ?? "");
     const beforeColonB = getTextBeforeColon(b?.text ?? "");
     if (beforeColonA && beforeColonB && beforeColonA === beforeColonB) {
-      return 0.95; // High score for same content before colon
+      return 0.95;
     }
     
     return diceCoefficient(ka, kb);
@@ -262,12 +266,10 @@ function coalesceRunInOrder(
     const sb = strip(b?.text ?? "").trim();
     if (!sa || !sb) return false;
 
-    // Check for date placeholder match
     if (isDatePlaceholderMatch(a?.text ?? "", b?.text ?? "")) {
       return true;
     }
 
-    // Check if content before colon matches
     const beforeColonA = getTextBeforeColon(a?.text ?? "");
     const beforeColonB = getTextBeforeColon(b?.text ?? "");
     if (beforeColonA && beforeColonB && beforeColonA === beforeColonB) {
@@ -313,15 +315,14 @@ function coalesceRunInOrder(
     const afterLabel = rb ? getLeadingSectionLabel(rb.text) : null;
     const sectionNumberChanged = beforeLabel !== afterLabel;
     
-    // Check if content before colon matches but content after differs
     const beforeColonA = getTextBeforeColon(lb?.text ?? "");
     const beforeColonB = getTextBeforeColon(rb?.text ?? "");
-    const contentSameAfterStripping =
-      options.ignoreSectionNumber && stripSectionNoise(lb?.text ?? "") === stripSectionNoise(rb?.text ?? "");
+    const ca = canonicalAfterStrip(lb);
+    const cb = canonicalAfterStrip(rb);
+    const contentSameAfterStripping = Boolean(ca && cb && ca === cb);
     
     let kind: RowKind = contentSameAfterStripping ? "matched" : "modified";
     
-    // If content before colon matches but actual content differs, mark as modified
     if (beforeColonA && beforeColonB && beforeColonA === beforeColonB && !contentSameAfterStripping) {
       kind = "modified";
     }

@@ -103,7 +103,13 @@ export async function analyzeRisks(params: {
       } catch (e: any) {
         const msg = String(e?.message ?? e ?? "");
         const is429 = /\b429\b/.test(msg) || /rate\s*limit/i.test(msg) || /too\s*many\s*requests/i.test(msg);
-        if (!is429 || attempt >= maxRetries) throw e;
+        const isNonJson =
+          /non-JSON/i.test(msg) ||
+          /returned\s+non-JSON/i.test(msg) ||
+          /LLM\s+returned\s+non-JSON/i.test(msg) ||
+          /non-JSON\s+output/i.test(msg);
+        const retryable = is429 || isNonJson;
+        if (!retryable || attempt >= maxRetries) throw e;
         const backoff = Math.min(20_000, baseBackoffMs * Math.pow(2, attempt));
         const jitter = Math.floor(Math.random() * 250);
         await sleep(backoff + jitter);
@@ -139,6 +145,7 @@ export async function analyzeRisks(params: {
 
   const totalSteps = 1 + orderedSectionLabels.length;
   let completedSteps = 0;
+  let usedHeuristicFallback = false;
 
   const heuristicOverall: AiJobResultV2["overall"] = {
     summary: `共检测到 ${withSection.length} 处变更，覆盖 ${sectionLabels.length} 个一级章节。建议优先复核：责任、付款、终止、争议解决、数据合规等高风险条款。`,
@@ -197,8 +204,8 @@ export async function analyzeRisks(params: {
         : orderedSectionLabels
     };
   } catch (e: any) {
-    const msg = String(e?.message ?? e ?? "");
-    throw new Error(`LLM overall call failed: ${msg}`);
+    usedHeuristicFallback = true;
+    overall = { ...heuristicOverall, changedSectionLabels: orderedSectionLabels };
   }
 
   completedSteps++;
@@ -266,8 +273,15 @@ export async function analyzeRisks(params: {
       }
       sections.push(section);
     } catch (e: any) {
-      const msg = String(e?.message ?? e ?? "");
-      throw new Error(`LLM section call failed (${label}): ${msg}`);
+      usedHeuristicFallback = true;
+      sections.push({
+        sectionLabel: label,
+        summary: `该一级章节共 ${items.length} 处变更，建议按条款逐项复核。`,
+        keyRisks: [],
+        suggestions: ["核对变更是否影响权利义务边界、触发条件与责任承担"],
+        relatedRowIds: take.map((x) => x.rowId),
+        relatedBlockIds: take.map((x) => x.blockId)
+      });
     }
 
     completedSteps++;
@@ -279,7 +293,7 @@ export async function analyzeRisks(params: {
     compareId: params.compareId,
     overall,
     sections,
-    meta: { provider: cfg.provider, model: cfg.model }
+    meta: usedHeuristicFallback ? { provider: "heuristic" } : { provider: cfg.provider, model: cfg.model }
   };
 }
 
