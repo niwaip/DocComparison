@@ -19,6 +19,7 @@
         --bad:#fb7185;
       }
       *{box-sizing:border-box;}
+      li { list-style-type: none; }
       body{
         margin:0;
         font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
@@ -187,6 +188,12 @@
       .diff-cell.active-diff-cell{outline:2px solid rgba(96,165,250,.65); outline-offset:-2px;}
       .diff-cell{overflow-wrap:break-word; word-break:normal; min-width: 0;}
       .cell-inner{display:flex; align-items:flex-start; gap:8px;}
+      .diff-cell.left .cell-inner::before{
+        content: "";
+        display: block;
+        width: 28px;
+        flex: 0 0 auto;
+      }
       .ai-suggest-btn{
         flex: 0 0 auto;
         width: 28px;
@@ -203,7 +210,7 @@
       }
       .ai-suggest-btn:hover{background: rgba(255,255,255,.06);}
       .cell-content{min-width:0; flex: 1;}
-      .diff-cell p, .diff-cell h1, .diff-cell h2, .diff-cell h3, .diff-cell h4, .diff-cell h5, .diff-cell h6{margin:.25em 0;}
+      .diff-cell p, .diff-cell h1, .diff-cell h2, .diff-cell h3, .diff-cell h4, .diff-cell h5, .diff-cell h6{margin:.25em 0; font-size: 1em; font-weight: normal;}
       .diff-cell ul, .diff-cell ol{margin:.25em 0; padding-left:1.1em; list-style-position: inside;}
       .diff-cell li{margin:.1em 0;}
       .diff-cell table{border-collapse:collapse; width:100%;}
@@ -503,6 +510,8 @@
                     </div>
                   </div>
                 </div>
+
+                <div id="rulesDynamicContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
 
                 <div id="rulesPurchaseSection" style="border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:10px 12px; background: rgba(15,23,42,.28);">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">

@@ -95,6 +95,17 @@ const upload = multer({
   limits: { fileSize: Number(env("MAX_UPLOAD_MB", "20")) * 1024 * 1024 }
 });
 
+// CORS
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "../public")));
 
@@ -116,11 +127,11 @@ function getStandardContractTypes(): Array<{ id: string; name: string }> {
     } catch {}
   }
   return [
-    { id: "purchase", name: "买卖合同（采购）" },
-    { id: "service", name: "服务合同" },
-    { id: "nda", name: "保密协议" },
-    { id: "outsourcing", name: "委外加工合同" },
-    { id: "software", name: "软件许可合同" }
+    { id: "sales", name: "买卖合同（销售）" },
+    { id: "service_procurement_onsite", name: "技术服务合同（采购）（现场人员服务）" },
+    { id: "service_procurement", name: "技术服务合同（采购）" },
+    { id: "service_sales", name: "技术服务合同（销售）" },
+    { id: "purchase", name: "买卖合同（采购）" }
   ];
 }
 
@@ -178,7 +189,7 @@ app.post("/api/standard-contracts/:typeId/template", upload.single("file"), asyn
     const t = types.find((x) => x.id === typeId);
     if (!t) return res.status(400).send("unknown standardTypeId");
     const ext = String(path.extname(f.originalname || "") || "").toLowerCase();
-    if (ext !== ".doc" && ext !== ".docx" && ext !== ".pdf") return res.status(400).send("only .doc/.docx/.pdf supported");
+    if (ext !== ".doc" && ext !== ".docx") return res.status(400).send("only .doc/.docx supported");
 
     const meta = {
       schemaVersion: "1" as const,
@@ -187,11 +198,9 @@ app.post("/api/standard-contracts/:typeId/template", upload.single("file"), asyn
       fileName: String(f.originalname || `${typeId}${ext}`),
       mimeType: String(
         f.mimetype ||
-          (ext === ".pdf"
-            ? "application/pdf"
-            : ext === ".doc"
-              ? "application/msword"
-              : "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+          (ext === ".doc"
+            ? "application/msword"
+            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
       ),
       sha256: sha256(f.buffer),
       updatedAt: new Date().toISOString()
@@ -1296,7 +1305,11 @@ async function bufferToSafeHtml(params: { buffer: Buffer; mimeType: string; file
           const html2 = await docxBufferToSafeHtmlMammoth(params.buffer);
           if (html2) return html2;
         } catch {}
-        return docxBufferToSafeHtml(params.buffer);
+        // Fallback to soffice only if configured, otherwise fail gracefully or return empty
+        if (process.env.SOFFICE_BIN) {
+             return docxBufferToSafeHtml(params.buffer);
+        }
+        throw new Error("Docx parsing failed (mammoth returned empty, and SOFFICE_BIN not set)");
       }
       if (isDoc) return docBufferToSafeHtml(params.buffer);
       throw new Error(`unstructured failed for: ${params.mimeType} (${params.fileName})`);

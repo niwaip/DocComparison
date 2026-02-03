@@ -71,6 +71,7 @@ const rulesPurchaseTermMaxEnabledEl = document.getElementById("rulesPurchaseTerm
 const rulesPurchaseTermMaxEl = document.getElementById("rulesPurchaseTermMax");
 const rulesPurchaseSection8EnabledEl = document.getElementById("rulesPurchaseSection8Enabled");
 const rulesPurchaseCopiesEnabledEl = document.getElementById("rulesPurchaseCopiesEnabled");
+const rulesDynamicContainerEl = document.getElementById("rulesDynamicContainer");
 const rulesStatusEl = document.getElementById("rulesStatus");
 const prevDiffBtn = document.getElementById("prevDiffBtn");
 const nextDiffBtn = document.getElementById("nextDiffBtn");
@@ -82,6 +83,8 @@ let diffNavRows = [];
 let diffNavIndex = -1;
 let standardTypes = [];
 let isSubmitting = false;
+let currentTemplateBlocks = [];
+let currentRules = {};
 
 function refreshDiffNav() {
   diffNavRows = Array.from(
@@ -863,13 +866,78 @@ function renderRulesTemplatePreview(blocks) {
         <div data-tpl-block="${blockId}" style="border:1px solid rgba(255,255,255,.10); border-radius:12px; overflow:hidden; margin-bottom:10px; background: rgba(2,6,23,.18);">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.10); background: rgba(15,23,42,.35);">
             <div class="mono" style="opacity:.85; font-size:12px;">${blockId} · ${heading}</div>
-            <button class="mini-btn" type="button" data-copy-block="${blockId}">复制锚点</button>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="mini-btn" type="button" data-copy-block="${blockId}">复制锚点</button>
+              <button class="mini-btn" type="button" data-edit-block="${blockId}">编辑</button>
+            </div>
           </div>
           <div style="padding:8px 10px;">${html}</div>
         </div>
       `;
     })
     .join("");
+}
+
+function renderDynamicRulesForm() {
+  if (!rulesDynamicContainerEl) return;
+  rulesDynamicContainerEl.innerHTML = "";
+  if (!currentTemplateBlocks.length) {
+    rulesDynamicContainerEl.innerHTML = `<div style="opacity:.75; padding:10px;">请先上传模板以配置段落规则</div>`;
+    return;
+  }
+
+  const blockRules = currentRules?.blockRules || {};
+
+  currentTemplateBlocks.forEach((block, index) => {
+    const blockId = String(block.blockId || "");
+    const kind = String(block.kind || "");
+    if (!blockId) return;
+
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:10px 10px; background: rgba(2,6,23,.22);";
+    
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;";
+    
+    const label = document.createElement("label");
+    label.className = "toggle";
+    label.style.justifyContent = "flex-start";
+    
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.dataset.blockId = blockId;
+    checkbox.dataset.field = "enabled";
+    checkbox.checked = blockRules[blockId]?.enabled !== false;
+    
+    const span = document.createElement("span");
+    span.textContent = `${index + 1}. ${kind === 'heading' ? '标题' : '段落'} (${blockId.slice(0, 8)}...)`;
+    
+    label.appendChild(checkbox);
+    label.appendChild(span);
+    header.appendChild(label);
+    wrapper.appendChild(header);
+
+    const inputWrapper = document.createElement("div");
+    inputWrapper.style.cssText = "display:flex; flex-direction:column; gap:6px;";
+    
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.style.opacity = ".85";
+    meta.textContent = "规则配置 (JSON/文本)";
+    
+    const input = document.createElement("textarea");
+    input.style.cssText = "min-height:60px; width:100%; border-radius:10px; border:1px solid rgba(255,255,255,.14); background: rgba(15,23,42,.55); color: var(--text); padding: 8px; outline:none; font-family:monospace; font-size:12px;";
+    input.dataset.blockId = blockId;
+    input.dataset.field = "rule";
+    input.value = blockRules[blockId]?.rule || "";
+    input.placeholder = "在此输入该段落的检查规则...";
+
+    inputWrapper.appendChild(meta);
+    inputWrapper.appendChild(input);
+    wrapper.appendChild(inputWrapper);
+    
+    rulesDynamicContainerEl.appendChild(wrapper);
+  });
 }
 
 async function copyTextToClipboard(text) {
@@ -904,11 +972,15 @@ async function loadRulesTemplatePreviewFor(typeId) {
   setRulesAnchorBar("");
   if (!id) {
     renderRulesTemplatePreview([]);
+    currentTemplateBlocks = [];
+    renderDynamicRulesForm();
     return;
   }
   const std = standardTypes.find((t) => String(t.id) === id) || null;
   if (!std || !std.hasTemplate) {
     rulesTemplatePreviewEl.innerHTML = `<div style="opacity:.75;">模板未上传</div>`;
+    currentTemplateBlocks = [];
+    renderDynamicRulesForm();
     return;
   }
   rulesTemplatePreviewEl.innerHTML = `<div style="opacity:.75;">加载预览中…</div>`;
@@ -917,9 +989,14 @@ async function loadRulesTemplatePreviewFor(typeId) {
     const res = await fetch(`/api/standard-contracts/${encodeURIComponent(id)}/template/preview?chunkLevel=${encodeURIComponent(chunkLevel)}`);
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    renderRulesTemplatePreview(data?.blocks || []);
+    const blocks = data?.blocks || [];
+    renderRulesTemplatePreview(blocks);
+    currentTemplateBlocks = blocks;
+    renderDynamicRulesForm();
   } catch (e) {
     rulesTemplatePreviewEl.innerHTML = `<div style="opacity:.75;">预览加载失败：${String(e?.message || e)}</div>`;
+    currentTemplateBlocks = [];
+    renderDynamicRulesForm();
   }
 }
 
@@ -1000,11 +1077,15 @@ function clampInt(raw, min, max, fallback) {
 function fillRulesForm(typeId, obj) {
   const id = String(typeId || "").trim();
   const rules = obj && typeof obj === "object" ? obj : {};
+  currentRules = rules;
+  
   if (rulesHeadingEnabledEl) rulesHeadingEnabledEl.checked = rules?.heading?.enabled !== false;
   if (rulesHeadingMaxLevelEl) rulesHeadingMaxLevelEl.value = String(clampInt(rules?.heading?.maxLevel, 1, 6, 2));
   if (rulesPlaceholderEnabledEl) rulesPlaceholderEnabledEl.checked = rules?.placeholder?.enabled !== false;
   if (rulesPlaceholderRegexEl) rulesPlaceholderRegexEl.value = String(rules?.placeholder?.regex || "");
   if (rulesDeletedEnabledEl) rulesDeletedEnabledEl.checked = rules?.deletedClause?.enabled !== false;
+
+  renderDynamicRulesForm();
 
   applyRulesTypeUi(id);
   if (id !== "purchase") return;
@@ -1066,6 +1147,25 @@ function rulesFromForm(typeId) {
 
   const re = rulesPlaceholderRegexEl ? String(rulesPlaceholderRegexEl.value || "").trim() : "";
   if (re) obj.placeholder.regex = re;
+
+  if (rulesDynamicContainerEl) {
+    const blockRules = {};
+    const inputs = rulesDynamicContainerEl.querySelectorAll("[data-block-id]");
+    inputs.forEach((el) => {
+      const blockId = el.dataset.blockId;
+      const field = el.dataset.field;
+      if (!blockId || !field) return;
+
+      if (!blockRules[blockId]) blockRules[blockId] = { enabled: true };
+
+      if (field === "enabled") {
+        blockRules[blockId].enabled = el.checked;
+      } else if (field === "rule") {
+        blockRules[blockId].rule = el.value;
+      }
+    });
+    obj.blockRules = blockRules;
+  }
 
   if (id === "purchase") {
     const section1Keywords = (() => {
@@ -1189,12 +1289,21 @@ if (rulesStandardTypeEl) rulesStandardTypeEl.addEventListener("change", async ()
 
 if (rulesTemplatePreviewEl) {
   rulesTemplatePreviewEl.addEventListener("click", async (e) => {
-    const btn = e?.target?.closest ? e.target.closest("[data-copy-block]") : null;
-    const id = btn ? String(btn.getAttribute("data-copy-block") || "") : "";
-    if (!id) return;
-    const ok = await copyTextToClipboard(id);
-    setRulesAnchorBar(ok ? `已复制模板块锚点：${id}` : `复制失败：${id}`);
-    setTimeout(() => setRulesAnchorBar(""), 1800);
+    const copyBtn = e?.target?.closest ? e.target.closest("[data-copy-block]") : null;
+    const editBtn = e?.target?.closest ? e.target.closest("[data-edit-block]") : null;
+    if (copyBtn) {
+      const id = String(copyBtn.getAttribute("data-copy-block") || "");
+      if (!id) return;
+      const ok = await copyTextToClipboard(id);
+      setRulesAnchorBar(ok ? `已复制模板块锚点：${id}` : `复制失败：${id}`);
+      setTimeout(() => setRulesAnchorBar(""), 1800);
+      return;
+    }
+    if (editBtn) {
+      const id = String(editBtn.getAttribute("data-edit-block") || "");
+      if (!id) return;
+      openInlineRuleEditor(id);
+    }
   });
 }
 
@@ -1406,6 +1515,19 @@ formEl.addEventListener("submit", async (e) => {
     const data = await res.json();
 
     resultEl.innerHTML = data?.diff?.diffHtml || "";
+    // Inject per-block Edit buttons on left cells
+    Array.from(resultEl.querySelectorAll(".diff-cell.left .cell-inner")).forEach((inner) => {
+      const cell = inner.closest(".diff-cell.left");
+      const blockId = cell?.getAttribute?.("data-block-id") || "";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ai-suggest-btn";
+      btn.title = "编辑规则";
+      btn.setAttribute("aria-label", "编辑规则");
+      btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/></svg>`;
+      btn.dataset.editBlockId = blockId;
+      inner.insertBefore(btn, inner.firstChild);
+    });
     refreshDiffNav();
     updateSectionTip(data?.diff?.meta);
     const compareId = data?.compareId;
@@ -1469,3 +1591,83 @@ formEl.addEventListener("submit", async (e) => {
 });
 
 setStatus("");
+
+// Inline Rule Editor (right panel)
+function ensureBlockRule(blockId) {
+  if (!currentRules) currentRules = {};
+  if (!currentRules.blockRules) currentRules.blockRules = {};
+  if (!currentRules.blockRules[blockId]) currentRules.blockRules[blockId] = { enabled: true, rule: "" };
+}
+
+function openInlineRuleEditor(blockId) {
+  const id = String(blockId || "").trim();
+  if (!id) return;
+  ensureBlockRule(id);
+  // Show right panel and render editor
+  setRiskAreaExpanded(true);
+  const panel = risksEl;
+  if (!panel) return;
+  panel.innerHTML = "";
+  riskMetaEl.textContent = "规则编辑";
+  const card = document.createElement("div");
+  card.className = "risk-item expanded";
+  const head = document.createElement("div");
+  head.className = "risk-head";
+  const title = document.createElement("div");
+  title.className = "risk-title";
+  title.innerHTML = `${levelIcon("low")}<span class="t">编辑段落规则 · ${id}</span>`;
+  const actions = document.createElement("div");
+  actions.className = "risk-actions";
+  const locateBtn = document.createElement("button");
+  locateBtn.type = "button";
+  locateBtn.className = "mini-btn";
+  locateBtn.textContent = "定位";
+  actions.appendChild(locateBtn);
+  head.appendChild(title);
+  head.appendChild(actions);
+  const body = document.createElement("div");
+  body.className = "risk-body";
+  body.hidden = false;
+  const ta = document.createElement("textarea");
+  ta.style.cssText = "min-height:160px; width:100%; border-radius:10px; border:1px solid rgba(255,255,255,.14); background: rgba(15,23,42,.55); color: var(--text); padding: 10px; outline:none; font-family:monospace; font-size:12px;";
+  ta.value = currentRules.blockRules[id]?.rule || "";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "mini-btn";
+  saveBtn.textContent = "保存";
+  saveBtn.style.marginTop = "8px";
+  saveBtn.addEventListener("click", async () => {
+    ensureBlockRule(id);
+    currentRules.blockRules[id].rule = ta.value || "";
+    const typeId = String((standardTypeEl && standardTypeEl.value) || "");
+    if (typeId) {
+      await saveRulesFor(typeId);
+      setRiskAreaExpanded(true);
+    }
+  });
+  locateBtn.addEventListener("click", () => {
+    const el = document.querySelector(`[data-block-id="${CSS.escape(id)}"]`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el) {
+      el.style.outline = "2px solid #60a5fa";
+      setTimeout(() => (el.style.outline = ""), 1200);
+    }
+  });
+  card.appendChild(head);
+  body.appendChild(ta);
+  body.appendChild(saveBtn);
+  card.appendChild(body);
+  panel.appendChild(card);
+}
+
+// Edit button in compare result
+resultEl.addEventListener("click", (e) => {
+  const btn = e.target?.closest?.(".ai-suggest-btn");
+  // If it's our injected edit button (has data-edit-block-id), open editor
+  if (btn && btn.dataset && btn.dataset.editBlockId) {
+    const id = String(btn.dataset.editBlockId || "");
+    if (id) openInlineRuleEditor(id);
+    e.stopPropagation();
+    e.preventDefault();
+  }
+});

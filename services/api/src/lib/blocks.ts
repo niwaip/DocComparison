@@ -51,6 +51,9 @@ export function buildBlocksFromHtml(html: string, chunkLevel?: number): Block[] 
     });
   }
 
+  // Restore heading numbering if stripped by parser
+  restoreHeadingNumbering(nodes);
+
   const boilerplateSignature = (text: string): string => {
     const norm = normalizeText(text);
     if (!norm) return "";
@@ -156,7 +159,17 @@ export function buildBlocksFromHtml(html: string, chunkLevel?: number): Block[] 
     if (!n) return false;
     if (!(n.kind === "heading" || n.headingLevel !== null)) return false;
     const t = normalizeText(n.text);
-    if (!/[：:]$/.test(t.trim())) return false;
+    
+    // If it is a Chapter or Part (large section), we WANT to merge it with its content
+     // so we removed the explicit "return false" checks for chapters here.
+     
+     const isLabel = /^\d+[.．]?$/.test(t.trim()) || /^第[一二三四五六七八九十百千0-9]+[章节条篇部分]$/.test(t.trim());
+     
+     // Relax logic: If it's Level 1 or Chinese "X、" style, we try to merge even if no colon/label
+     const isLevel1 = n.headingLevel === 1;
+     const isChineseHeading = /^[一二三四五六七八九十]+[、.．]/.test(t.trim());
+     
+     if (!isLevel1 && !isChineseHeading && !isLabel && !/[：:]$/.test(t.trim())) return false;
     for (let j = i + 1; j < Math.min(nodes.length, i + 6); j++) {
       const nn = nodes[j];
       if (!nn) break;
@@ -239,6 +252,36 @@ function makeBlock(
   };
 }
 
+const CN_NUMS = ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+function toChineseNum(n: number): string {
+  if (n <= 0) return "";
+  if (n < 10) return CN_NUMS[n];
+  if (n < 20) return "十" + (n % 10 === 0 ? "" : CN_NUMS[n % 10]);
+  if (n < 100) return CN_NUMS[Math.floor(n / 10)] + "十" + (n % 10 === 0 ? "" : CN_NUMS[n % 10]);
+  return String(n);
+}
+
+function getListPrefix($: cheerio.CheerioAPI, el: any): string {
+  const tag = (el as any).tagName?.toLowerCase?.() ?? "";
+  if (tag !== "li") return "";
+  
+  const parent = $(el).parent();
+  const pTag = parent.prop("tagName")?.toLowerCase();
+  if (pTag !== "ol") return "";
+
+  const depth = $(el).parents("ol, ul").length - 1;
+  
+  // Top level items are handled by global numbering (restoreHeadingNumbering)
+  // to support mixed "Chapter (二、)" and "Item (1.)" sequences.
+  if (depth === 0) return "";
+
+  const start = parseInt(parent.attr("start") || "1", 10);
+  const idx = $(el).index();
+  const num = (isNaN(start) ? 1 : start) + idx;
+
+  return `${num}. `;
+}
+
 function elementText($: cheerio.CheerioAPI, el: any, tag: string): string {
   if (tag === "table") {
     const rows: string[] = [];
@@ -275,9 +318,34 @@ function elementText($: cheerio.CheerioAPI, el: any, tag: string): string {
     return normalizeText(rows.join("\n"));
   }
 
+  // Restore list numbering for <ol><li> items
+  let prefix = "";
+  if (tag === "li") {
+    prefix = getListPrefix($, el);
+  }
+
   const node = $(el).clone();
   node.find("br").replaceWith("\n");
-  return node.text();
+  let txt = prefix + node.text();
+
+  // Heuristic: Restore missing form underlines for list items ending in colon
+  // Also handles cases like "： 。" or "：  "
+  if (tag === "li") {
+    const trimmed = normalizeText(txt).trim();
+    if (/[：:][\s\u3000]*[.。]?$/.test(trimmed) && trimmed.length < 50 && !trimmed.includes("_")) {
+       const m = /^(.*?)([：:])[\s\u3000]*([.。])?$/.exec(trimmed);
+       if (m) {
+         const before = m[1] || "";
+         const colon = m[2] || "：";
+         const endPunc = m[3] || "";
+         txt = `${before}${colon} __________${endPunc}`;
+       } else {
+         txt = trimmed.replace(/[：:]\s*$/, "： __________");
+       }
+    }
+  }
+
+  return txt;
 }
 
 function parseInlineOrderedList(text: string): { prefix: string; items: string[] } | null {
@@ -320,6 +388,9 @@ function normalizeInlineOrderedListText(text: string): string {
 }
 
 function normalizeInlineOrderedListHtml(fragment: string, text: string): string {
+  // Disable converting text lists to HTML lists to preserve original numbering visibility
+  return fragment; 
+  /*
   const html = String(fragment ?? "");
   if (!html) return html;
   if (/<\s*(?:ol|ul|li)\b/i.test(html)) return html;
@@ -328,6 +399,7 @@ function normalizeInlineOrderedListHtml(fragment: string, text: string): string 
   const prefixHtml = parsed.prefix ? `<p>${escapeHtml(parsed.prefix)}</p>` : "";
   const ol = `<ol>${parsed.items.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ol>`;
   return `${prefixHtml}${ol}`;
+  */
 }
 
 function normalizeKeyValueTableHtml(fragment: string, text: string): string {
@@ -394,8 +466,23 @@ function normalizeKeyValueTableHtml(fragment: string, text: string): string {
 
 function nodeFromElement($: cheerio.CheerioAPI, tag: string, structurePath: string, el: any) {
   const kind = tagToKind(tag);
-  const html = $(el).toString();
+  let html = $(el).toString();
   const text = elementText($, el, tag);
+  
+  if (tag === "li") {
+    const prefix = getListPrefix($, el);
+    if (prefix) {
+       html = html.replace(/^(<li[^>]*>)/i, `$1${prefix}`);
+    }
+    // Sync underscores from text to HTML if present: insert between colon and ending punctuation
+    if (/__________/.test(text)) {
+       html = html.replace(/(：|:)(?:[\s\u3000]*)([.。])?(\s*)<\/li>/i, (_m, c, p) => {
+         const punct = p || "";
+         return `${c} __________${punct}</li>`;
+       });
+    }
+  }
+
   const headingLevel = detectHeadingLevel(tag, text);
   return { kind, headingLevel, structurePath, html, text };
 }
@@ -490,4 +577,104 @@ function tagToKind(tag: string): BlockKind {
   if (tag === "table") return "table";
   if (/^h[1-6]$/.test(tag)) return "heading";
   return "paragraph";
+}
+
+function restoreHeadingNumbering(nodes: Array<{ kind: BlockKind; headingLevel: number | null; html: string; text: string }>) {
+  const counters = [0, 0, 0, 0, 0, 0];
+  
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const nextNode = nodes[i + 1];
+    const t = normalizeText(node.text).trim();
+    
+    // Determine if this is a "Chapter Title" (Level 1)
+    let isChapter = false;
+    
+    if (node.kind === "heading" && (node.headingLevel === 1 || node.headingLevel === null)) {
+      isChapter = true;
+    } else if (node.kind === "list_item") {
+      // Heuristic for implicit chapters in lists
+      const hasColon = /[：:]$/.test(t);
+      const hasComma = /[、]/.test(t);
+      const notBox = !/^[□☑☒]/.test(t);
+      
+      if (notBox && (hasColon || hasComma)) {
+        const hasBoxNext = nextNode && /^[□☑☒]/.test(normalizeText(nextNode.text).trim());
+        const isLong = t.length > 8;
+        const nextIsTable = nextNode && nextNode.kind === "table";
+        const nextIsDifferent = nextNode && nextNode.kind !== "list_item";
+        
+        // "产品名称..." (Next is Table)
+        // "交货方式..." (Next is Box)
+        // "运输方式：" (Short, Next is "交货地点", neither box nor table) -> False
+        if (hasBoxNext || isLong || nextIsTable || (hasComma && nextIsDifferent)) {
+          isChapter = true;
+        }
+      }
+    }
+
+    if (isChapter) {
+      counters[0]++;
+      for (let k = 1; k < 6; k++) counters[k] = 0;
+
+      // Force node to be a heading for splitting logic
+      node.kind = "heading";
+      node.headingLevel = 1;
+
+      // Check existing numbering
+      if (/^第[一二三四五六七八九十百千0-9]+[章篇]/.test(t)) continue;
+      if (/^[一二三四五六七八九十]+[、.．]/.test(t)) continue;
+      if (/^Chapter\s+\d+/i.test(t)) continue;
+
+      const prefix = `${toChineseNum(counters[0])}、`;
+      node.text = prefix + node.text;
+      
+      // Inject into HTML. Convert <li> to <h3> to ensure visual distinction and block behavior
+      if (/^<li/i.test(node.html)) {
+        node.html = node.html.replace(/^<li[^>]*>/i, "<h3>").replace(/<\/li>$/i, "</h3>");
+      }
+      node.html = node.html.replace(/(>)([^<])/i, `$1${prefix}$2`);
+      continue;
+    }
+
+    // Level 2 (Items) handling for list_items that are NOT chapters
+    if (node.kind === "list_item") {
+      // If it already has numbering, skip
+      if (/^\d+(\.\d+)*\s*[.．、]/.test(t)) {
+        continue; 
+      }
+      
+      // Auto-numbering
+      counters[1]++;
+      const prefix = `${counters[1]}. `;
+      node.text = prefix + node.text;
+      
+      // Keep as li but ensure text is inside. 
+      // The user wants "fixed text", so we inject it.
+      // Also user complained about "li showing as li".
+      // We can convert to <p> to be safe and avoid list styling issues entirely.
+      if (/^<li/i.test(node.html)) {
+        node.html = node.html.replace(/^<li[^>]*>/i, "<p class='list-item-converted'>").replace(/<\/li>$/i, "</p>");
+      }
+      node.html = node.html.replace(/(>)([^<])/i, `$1${prefix}$2`);
+      
+      continue;
+    }
+
+    // Normal headings (H2-H6)
+    if (node.kind === "heading" && node.headingLevel !== null) {
+      const lv = node.headingLevel;
+      if (lv >= 2 && lv <= 6) {
+        counters[lv - 1]++;
+        for (let k = lv; k < 6; k++) counters[k] = 0;
+        
+        // Skip if numbered
+        if (/^\d+(\.\d+)*\s*[.．、]/.test(t)) continue;
+        
+        const prefix = `${counters[lv - 1]}. `; // Simple 1. 2. 3. for H2
+        node.text = prefix + node.text;
+        node.html = node.html.replace(/(>)([^<])/i, `$1${prefix}$2`);
+      }
+    }
+  }
 }

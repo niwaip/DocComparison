@@ -76,13 +76,13 @@ export function stripSectionNoise(text: string): string {
       .replace(/\.{6,}\s*$/g, "")
       .trim();
 
-    const mNum = /^(\d+(?:\s*\.\s*\d+)*)(?=(?:\s|[.。:：、\-—\)])|$)/.exec(s);
-    if (mNum) {
-      s = s.slice(mNum[0].length).replace(/^[\s.。:：、\-—)\]]+/g, "").trimStart();
-    } else {
-      const mCn = /^(第[一二三四五六七八九十百千0-9]+[条章节篇部分])(?=(?:\s|[.。:：、\-—\)])|$)/.exec(s);
-      if (mCn) s = s.slice(mCn[0].length).replace(/^[\s.。:：、\-—)\]]+/g, "").trimStart();
-    }
+    // const mNum = /^(\d+(?:\s*\.\s*\d+)*)(?=(?:\s|[.。:：、\-—\)])|$)/.exec(s);
+    // if (mNum) {
+    //   s = s.slice(mNum[0].length).replace(/^[\s.。:：、\-—)\]]+/g, "").trimStart();
+    // } else {
+    //   const mCn = /^(第[一二三四五六七八九十百千0-9]+[条章节篇部分])(?=(?:\s|[.。:：、\-—\)])|$)/.exec(s);
+    //   if (mCn) s = s.slice(mCn[0].length).replace(/^[\s.。:：、\-—)\]]+/g, "").trimStart();
+    // }
 
     return normalizeText(s);
   });
