@@ -1,0 +1,600 @@
+Total Paragraphs: 111
+==================================================
+Para 0:
+  Text: '买卖合同'
+  Style: Normal
+  Runs: '买卖合同':Bold,Size:14.0
+------------------------------
+Para 2:
+  Text: '签订日期：'
+  Style: Normal
+  Indent: First: 311.85pt
+  Runs: '签订日期：':Size:9.0
+------------------------------
+Para 3:
+  Text: '签订地点：上海市浦东新区陆家嘴环'
+  Style: Normal
+  Indent: First: 311.85pt
+  Runs: '签订地点：':Size:9.0 | '上海市浦东新区陆家嘴环':Size:9.0
+------------------------------
+Para 4:
+  Text: '路1000号恒生银行大厦19楼012室'
+  Style: Normal
+  Indent: First: 311.85pt
+  Runs: '路':Size:9.0 | '1000':Size:9.0 | '号恒生银行大厦':Size:9.0 | '19':Size:9.0 | '楼':Size:9.0 | '012':Size:9.0 | '室':Size:9.0
+------------------------------
+Para 5:
+  Text: '合同编号：'
+  Style: Normal
+  Indent: First: 311.85pt
+  Runs: '合同编号：':Size:9.0
+------------------------------
+Para 7:
+  Text: '买方：\t\t\t\t\t\t\t\t\t       （下称甲方）'
+  Style: Normal
+------------------------------
+Para 8:
+  Text: '卖方：富士通（中国）信息系统有限公司   \t   （下称乙方）'
+  Style: Normal
+  Runs: '富士通（中国）信息系统有限公司':Size:12.0
+------------------------------
+Para 10:
+  Text: '乙双方经友好协商，就甲方向乙方购买产品达成如下条款，以资共同遵守。'
+  Style: Body Text Indent
+  Numbering: ID=30, Level=0
+  Runs: '乙双方经友好协商，就甲方向乙方购买产品达成如下条款，以资共同':Size:9.0
+------------------------------
+Para 12:
+  Text: '产品名称、规格、数量、价格'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '产品名称、规格、数量、价格':Size:9.0
+------------------------------
+Para 15:
+  Text: '交货方式、日期及最终用户：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '交货方式':Size:9.0 | '、':Size:9.0 | '日期':Size:9.0 | '及最终用户':Size:9.0 | '：':Size:9.0
+------------------------------
+Para 16:
+  Text: '□乙方应按规定的日期将产品送至甲方指定的地点，运费由乙方承担。'
+  Style: Normal
+  Numbering: ID=29, Level=0
+  Indent: Left: 41.95pt
+  Runs: '□':Size:9.0 | '乙方应按规定的日期将产品送至甲方指定的地点，运费由乙方承担。':Size:9.0
+------------------------------
+Para 17:
+  Text: '□甲方自提，运费由甲方承担。'
+  Style: Normal
+  Indent: Left: 42.0pt
+  Runs: '□':Size:9.0 | '甲方自提，运费由甲方承担。':Size:9.0
+------------------------------
+Para 18:
+  Text: '运输方式：'
+  Style: Normal
+  Numbering: ID=29, Level=0
+  Indent: Left: 41.95pt
+  Runs: '运输方式：':Size:9.0 | '                              ':Size:9.0,Underline:True,FontUnderline:True
+------------------------------
+Para 19:
+  Text: '交货地点：'
+  Style: Normal
+  Numbering: ID=29, Level=0
+  Indent: Left: 41.95pt
+  Runs: '交货地点：':Size:9.0 | '                              ':Size:9.0,Underline:True,FontUnderline:True
+------------------------------
+Para 20:
+  Text: '交货日期：'
+  Style: Normal
+  Numbering: ID=29, Level=0
+  Indent: Left: 41.95pt
+  Runs: '交货日期：':Size:9.0 | '                              ':Size:9.0,Underline:True,FontUnderline:True
+------------------------------
+Para 21:
+  Text: '最终用户：'
+  Style: Normal
+  Numbering: ID=29, Level=0
+  Indent: Left: 41.95pt
+  Runs: '最终用户：':Size:9.0 | '                              ':Size:9.0,Underline:True,FontUnderline:True
+------------------------------
+Para 23:
+  Text: '付款方式：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '付款方式：':Size:9.0
+------------------------------
+Para 24:
+  Text: '甲方于签约后    日内向乙方支付合同总价款的    ％，即                 。'
+  Style: Normal
+  Numbering: ID=34, Level=0
+  Runs: '甲方于签约后':Size:9.0 | '    ':Size:9.0,Underline:True,FontUnderline:True | '日内向乙方支付合同总价款的':Size:9.0 | '    ':Size:9.0,Underline:True,FontUnderline:True | '％':Size:9.0 | '，即':Size:9.0 | '                 ':Size:9.0,Underline:True,FontUnderline:True | '。':Size:9.0
+------------------------------
+Para 25:
+  Text: '乙方交付任何一期产品并向甲方发出《付款通知书》，甲方在收到该《付款通知书》    日内将当期产品之剩余款项           付至乙方。'
+  Style: Normal
+  Numbering: ID=34, Level=0
+  Indent: Left: 41.95pt
+  Runs: '乙方交付任何一期产品并向甲方发出《付款通知书》，甲方在收到该':Size:9.0 | '    ':Size:9.0,Underline:True,FontUnderline:True | '日内将当期':Size:9.0 | '产品':Size:9.0 | '之':Size:9.0 | '剩余':Size:9.0 | '款项':Size:9.0 | '           ':Size:9.0,Underline:True,FontUnderline:True | '付至乙方':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 26:
+  Text: '乙方指定银行帐号为：                      。'
+  Style: Normal
+  Numbering: ID=34, Level=0
+  Indent: Left: 41.95pt
+  Runs: '乙':Size:9.0 | '方':Size:9.0 | '指定银行帐号':Size:9.0 | '为':Size:9.0 | '：':Size:9.0 | '                      ':Size:9.0,Underline:True,FontUnderline:True | '。':Size:9.0
+------------------------------
+Para 27:
+  Text: '其他：                                     。'
+  Style: Normal
+  Numbering: ID=34, Level=0
+  Indent: Left: 41.95pt
+  Runs: '其他：':Size:9.0 | '                              ':Size:9.0,Underline:True,FontUnderline:True | ' ':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 29:
+  Text: '验收：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '验收：':Size:9.0
+------------------------------
+Para 30:
+  Text: '本合同项下之产品的验收标准为：产品名称、规格、数量与本合同规定相符，产品外观与产品说明书所示一致，并能满足产品所附说明书上注明的功能。'
+  Style: Normal
+  Numbering: ID=35, Level=0
+  Runs: '本合同项下之产品的验收标准为：产品名称、规格、数量与本合同规':Size:9.0
+------------------------------
+Para 31:
+  Text: '甲方应在收到本合同项下产品    日内对此产品进行验收。'
+  Style: Normal
+  Numbering: ID=35, Level=0
+  Indent: Left: 41.95pt
+  Runs: '甲方应在收到本合同项下产品':Size:9.0 | '    ':Size:9.0,Underline:True,FontUnderline:True | '日内对此产品进行验收。':Size:9.0
+------------------------------
+Para 32:
+  Text: '乙方交付之产品不符合验收标准的，乙方应予以更换，但该更换不影响同时交付的其他产品的验收。'
+  Style: Normal
+  Numbering: ID=35, Level=0
+  Indent: Left: 41.95pt
+  Runs: '乙方交付之产品不符合验收标准的，乙方应予以更换，但该更换不影':Size:9.0
+------------------------------
+Para 34:
+  Text: '使用要求：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '使用要求':Size:9.0 | '：':Size:9.0
+------------------------------
+Para 35:
+  Text: '如果甲方（或甲方的最终用户）向乙方购买的产品是富士通品牌的产品，甲方（或甲方的最终用户）在使用此类产品时，必须满足《关于富士通产品的高度安全使用要求》，否则乙方不会对由此发生的后果负责，《关于富士通产'
+  Style: Normal
+  Indent: Left: 14.05pt, First: 0.05pt
+  Runs: '如果甲方（或甲方的最终用户）向乙方购买的产品是富士通品牌的产':Size:9.0 | '，':Size:9.0 | '《关于富士通产品的高度安全使用要求》详见本合同附件一。':Size:9.0
+------------------------------
+Para 37:
+  Text: '保密条款：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '保密条款：':Size:9.0
+------------------------------
+Para 38:
+  Text: '甲乙双方对于根据本合同而知悉或获得的对方之商业机密和专业技术等，无论是书面的、口头的、图形的、电磁的或其它任何形式的信息，包括但不限于数据、模型、样品、草案、技术、方法、仪器设备和其它信息，未经对方书'
+  Style: Normal
+  Numbering: ID=36, Level=0
+  Runs: '甲乙双方对于根据本合同而知悉或获得的对方之商业机密和专业技术':Size:9.0 | '，无论是书面的、口头的、图形的、电磁的或其它任何形式的信息，':Size:9.0 | '经对方书面许可，不得以任何方式利用、公开或泄露给第三方。':Size:9.0
+------------------------------
+Para 39:
+  Text: '本保密条款不因本合同的终止或解除而失效。'
+  Style: Normal
+  Numbering: ID=36, Level=0
+  Indent: Left: 41.95pt
+  Runs: '本保密条款不因本合同的终止或解除而失效。':Size:9.0
+------------------------------
+Para 41:
+  Text: '知识产权条款'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '知识产权条款':Size:9.0
+------------------------------
+Para 42:
+  Text: '除双方另有约定外，否则双方签订本合同并不意味着一方将其拥有的著作权、专利、商业秘密、商标或其他知识产权转让或授权许可给另一方。'
+  Style: Normal
+  Numbering: ID=37, Level=0
+  Runs: '除双方另有约定外':Size:9.0 | '，否则双方签订本合同并不意味着一方将其拥有的':Size:9.0 | '著作权、专':Size:9.0 | '利、商业秘密、商标或其他知识产权转让或授权许可给另一方。':Size:9.0
+------------------------------
+Para 43:
+  Text: '如果本合同项下的产品是软件、程序、服务成果等无形财产，那么甲方只拥有上述产品非排他的、不可转让的使用权，其著作权仍旧为乙方或权利人所有。如果本合同项下产品包含使用许可，除非乙方或权利人在使用许可协议或'
+  Style: Normal
+  Numbering: ID=37, Level=0
+  Indent: Left: 41.95pt
+  Runs: '如果本合同项下的产品是软件、程序、服务成果等无形':Size:9.0 | '财产':Size:9.0 | '，那么甲方只拥有上述':Size:9.0 | '产品':Size:9.0 | '非排他':Size:9.0 | '的':Size:9.0 | '、不可转让的':Size:9.0 | '使用权，其著作权仍旧为乙方或':Size:9.0 | '权利人':Size:9.0 | '所有。':Size:9.0 | '如果本合同项下':Size:9.0 | '产品包含使用许可，':Size:9.0 | '除非乙方或权利人在使用许可协议或其他文件中另有规定，否则甲方':Size:9.0
+------------------------------
+Para 44:
+  Text: '非经乙方同意，甲方保证不对乙方的产品进行拷贝、复制、泄露给第三方使用，且不能解剖、汇编与反汇编，否则乙方将追究甲方法律责任。'
+  Style: Normal
+  Numbering: ID=37, Level=0
+  Indent: Left: 41.95pt
+  Runs: '非经乙方同意，甲方保证不对乙方的产品进行拷贝、复制、泄露给第':Size:9.0
+------------------------------
+Para 46:
+  Text: '销售及用途禁止'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '销售及用途禁止':Size:9.0
+------------------------------
+Para 47:
+  Text: '甲方不得将乙方提供的产品及服务用于以下用途：(i)大规模杀伤性武器（包括但不限于核武器、化学武器、生物武器、火箭及用于装载及发射上述武器的无人飞行器）的设计、开发、制造和储存；(ii)核燃料物质、核原'
+  Style: Normal
+  Numbering: ID=38, Level=0
+  Runs: '甲方不得将乙方提供的产品及服务用于以下用途：':Size:9.0 | '(':Size:9.0 | 'i':Size:9.0 | ')':Size:9.0 | '大规模杀伤性武器（包括但不限于核武器、化学武器、生物武器、火':Size:9.0 | '(ii)':Size:9.0 | '核燃料物质、核原料物质、核聚变、核反应堆及其零部件、重水的设':Size:9.0 | '(iii) ':Size:9.0 | '军队、军事组织或者用于军事用途的任何行为；':Size:9.0 | '((':Size:9.0 | 'i':Size:9.0 | ')':Size:9.0 | '、':Size:9.0 | '(ii)':Size:9.0 | '和':Size:9.0 | '(iii)':Size:9.0 | '以下称为':Size:9.0 | '“禁止行为”':Size:9.0 | ')':Size:9.0 | '。甲方不得将乙方提供的产品及服务销售、提供、许可或转移至直接':Size:9.0 | '乙':Size:9.0 | '方有合理理由相信用于禁止行为的任何个人、公司、组织。':Size:9.0
+------------------------------
+Para 48:
+  Text: '甲方不得将乙方提供的产品及服务销售或提供至下列国家：伊朗、伊拉克、利比亚、北朝鲜、阿富汗、叙利亚、苏丹、南苏丹、古巴、刚果民主共和国、索马里、黎巴嫩、中非共和国及任何乙方以后不时通知的国家（以下称为“'
+  Style: Normal
+  Numbering: ID=38, Level=0
+  Indent: Left: 41.95pt
+  Runs: '甲方不得将乙方提供的产品及服务销售或提供至下列国家：':Size:9.0 | '伊朗、伊拉克、利比亚、北朝鲜、阿富汗、叙利亚、苏丹、':Size:9.0 | '南苏丹':Size:9.0 | '、':Size:9.0 | '古巴、刚果民主共和国、索马里、黎巴嫩':Size:9.0 | '、中非共和国':Size:9.0 | '及任何乙方以后不时通知的国家（以下称':Size:9.0 | '为“限制地区”':Size:9.0 | '）。甲方不得将乙方提供的产品及服务销售、提供、许可或转移至直':Size:9.0 | '乙':Size:9.0 | '方有合理理由相信会销售或转移至限制地区的任何个人、公司、组织':Size:9.0
+------------------------------
+Para 49:
+  Text: '甲方不得将乙方提供的产品及服务销售、提供、许可或转移至直接或间接地用于、或准备用于或乙方有合理理由相信用于军事用途的任何个人、公司、组织。'
+  Style: Normal
+  Numbering: ID=38, Level=0
+  Indent: Left: 41.95pt
+  Runs: '甲方不得将乙方提供的产品及服务销售、提供、许可或转移至直接或':Size:9.0 | '乙':Size:9.0 | '方有合理理由相信用于军事用途的任何个人、公司、组织。':Size:9.0
+------------------------------
+Para 51:
+  Text: '保修和维修：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '保修和维修：':Size:9.0
+------------------------------
+Para 52:
+  Text: '保修期：自甲方收到本合同项下产品之日起    年内。'
+  Style: Normal
+  Numbering: ID=39, Level=0
+  Runs: '保修期：自甲方收到本合同项下产品之日起':Size:9.0 | '    ':Size:9.0,Underline:True,FontUnderline:True | '年内':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 53:
+  Text: '在双方约定的保修期内，产品在正常使用环境中发生的故障，乙方应无偿进行修理；若该故障是由非乙方原因导致的（包括但不限于甲方未按相应产品说明文档使用该产品、该产品由除乙方外的任何第三人进行了任何方式的修改'
+  Style: Normal
+  Numbering: ID=39, Level=0
+  Indent: Left: 41.95pt
+  Runs: '在双方约定的保修期内，产品在正常使用环境中发生的故障，乙方应':Size:9.0 | '；若该故障是由非乙方原因导致的（包括但不限于甲方未按相应产品':Size:9.0 | '、':Size:9.0 | '其他第三':Size:9.0 | '方产品':Size:9.0 | '的原因、':Size:9.0 | '网络故障或计算机病毒），则':Size:9.0 | '上述保修':Size:9.0 | '规定':Size:9.0 | '不适用。':Size:9.0 | '乙方有权委托第三方实施':Size:9.0 | '。':Size:9.0 | '产品由于非正常使用引起的损坏，甲方应承担':Size:9.0 | '维修':Size:9.0 | '费用':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 54:
+  Text: '保修期满后，甲、乙双方可就产品的维修事宜另行协商。'
+  Style: Normal
+  Numbering: ID=39, Level=0
+  Indent: Left: 41.95pt
+  Runs: '保修期满后，甲、乙双方可就产品的维修事宜另行协商。':Size:9.0
+------------------------------
+Para 56:
+  Text: '违约责任：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '违约责任：':Size:9.0
+------------------------------
+Para 57:
+  Text: '甲方逾期支付本合同项下的款项，应当向乙方支付违约金，违约金按逾期付款金额的每日千分之三计算。'
+  Style: Normal
+  Numbering: ID=40, Level=0
+  Runs: '甲方逾期支付本合同项下的款项，应当向乙方支付违约金，违约金按':Size:9.0 | '千':Size:9.0 | '分之':Size:9.0 | '三':Size:9.0 | '计算':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 58:
+  Text: '由于乙方提供的产品不符合该产品所附说明书上的要求，使甲方受到损失，甲方有权要求乙方赔偿，但无论如何，任何一方不对对方的任何结果性损失、附随损失、间接损失（包括担不限于预期经济利益、营业利润损失、商誉损'
+  Style: Normal
+  Numbering: ID=40, Level=0
+  Indent: Left: 41.95pt
+  Runs: '由于乙方提供的':Size:9.0 | '产品不符合该产品所附说明书上':Size:9.0 | '的要求，使甲方受到损失，甲方有权要求乙方赔偿，但无论如何，任':Size:9.0 | '商誉损失、停工、数据损坏或遗失）承担责任，且最高赔偿金额不超':Size:9.0
+------------------------------
+Para 60:
+  Text: '合同的变更和终止；'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '合同的变更和终止；':Size:9.0
+------------------------------
+Para 61:
+  Text: '对本合同的任何修改和变更，均应经双方协商一致且以书面形式做出。'
+  Style: Normal
+  Numbering: ID=41, Level=0
+  Runs: '对本合同的任何修改和变更，均应经双方协商一致且以书面形式做出':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 62:
+  Text: '甲乙双方经协商一致可签订书面协议终止本合同。'
+  Style: Normal
+  Numbering: ID=41, Level=0
+  Indent: Left: 41.95pt
+  Runs: '甲乙双方经协商一致可签订书面协议终止本合同。':Size:9.0
+------------------------------
+Para 63:
+  Text: '除本合同的授权委托人和甲乙双方的法定代表人以外，其他任何未经书面授权的人员，均无权修改和变更本合同，也无权向对方作出与本合同相关的承诺。'
+  Style: Normal
+  Numbering: ID=41, Level=0
+  Indent: Left: 41.95pt
+  Runs: '除本合同的授权委托人和甲乙双方的法定代表人以外，其他任何未经':Size:9.0 | '作出':Size:9.0 | '与本合同相关的承诺。':Size:9.0
+------------------------------
+Para 65:
+  Text: '不可抗力：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '不可抗力：':Size:9.0
+------------------------------
+Para 66:
+  Text: '由于地震、台风、水灾、战争以及其它不能预见并且对其发生和后果不能防止和避免的不可抗力事故，致使直接影响本合同无法履行或者不能正常履行时，遇有上述不可抗力事故的一方应立即将事故情况通知另一方，并应在合理'
+  Style: Normal
+  Numbering: ID=42, Level=0
+  Runs: '由于地震、台风、水灾、战争以及其它不能预见并且对其发生和后果':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 67:
+  Text: '上述证明文件应由不可抗力事故发生地区的公证机构出具。'
+  Style: Normal
+  Numbering: ID=42, Level=0
+  Indent: Left: 41.95pt
+  Runs: '上述证明文件应由不可抗力事故发生地区的公证机构出具':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 68:
+  Text: '对由于不可抗力造成的损失，任何一方不得提出赔偿要求。'
+  Style: Normal
+  Numbering: ID=42, Level=0
+  Indent: Left: 41.95pt
+  Runs: '对由于不可抗力造成的损失，任何一方不得提出赔偿要求':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 69:
+  Text: '在不可抗力消失后，除非双方已经达成其它协议，否则受到了不可抗力的影响的一方应当立即采取措施，继续履行合同。'
+  Style: Normal
+  Numbering: ID=42, Level=0
+  Indent: Left: 41.95pt
+  Runs: '在不可抗力消失后，除非双方已经达成其它协议，否则受到了不可抗':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 71:
+  Text: '适用法律及争议的解决'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '适用法律及争议的解决':Size:9.0
+------------------------------
+Para 72:
+  Text: '合同的订立、效力、解释、履行和争议的解决均受中华人民共和国法律的管辖。'
+  Style: Normal
+  Numbering: ID=43, Level=0
+  Runs: '合同的订立、效力、解释、履行和争议的解决均受中':Size:9.0 | '华人民共和':Size:9.0 | '国法律的管辖':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 73:
+  Text: '凡因履行本合同产生的或与本合同有关的一切争议，双方均应通过友好协商解决，若协商无法达成一致的，应将该争议提交上海国际经济贸易仲裁委员会进行仲裁，仲裁地点在中国上海，仲裁裁决对双方均具有约束力。'
+  Style: Normal
+  Numbering: ID=43, Level=0
+  Indent: Left: 41.95pt
+  Runs: '凡因履行本合同产生的或与本合同有关的一切争议，双方均应通过友':Size:9.0 | '上海国际经济贸易仲裁委员会':Size:9.0 | '进行仲裁，仲裁地点在中国上海，仲裁裁决对双方均具有约束力。':Size:9.0
+------------------------------
+Para 75:
+  Text: '合同的生效和效力：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '合同的生效和效力：':Size:9.0
+------------------------------
+Para 76:
+  Text: '合同经甲乙双方盖章生效。'
+  Style: Normal
+  Numbering: ID=44, Level=0
+  Runs: '合同经甲乙双方盖章生效。':Size:9.0
+------------------------------
+Para 77:
+  Text: '本合同签订之前甲乙双方之间的所有口头或书面承诺内容若与本合同之约定不一致的，以本合同之约定为准。'
+  Style: Normal
+  Numbering: ID=44, Level=0
+  Indent: Left: 41.95pt
+  Runs: '本合同签订之前甲乙双方之间的所有口头或书面承诺内容若与本合同':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 78:
+  Text: '本合同以中、  两国文字书就，两国文字具有同等法律效力；若有矛盾，以中文版本为准。'
+  Style: Normal
+  Numbering: ID=44, Level=0
+  Indent: Left: 41.95pt
+  Runs: '本合同以中、':Size:9.0 | '  ':Size:9.0,Underline:True,FontUnderline:True | '两国文字书就，两国文字具有同等法律效力；若有矛盾，以中文版本':Size:9.0
+------------------------------
+Para 79:
+  Text: '本合同的附件为本合同不可分割之组成部分，与本合同具有同等法律效力。'
+  Style: Normal
+  Numbering: ID=44, Level=0
+  Indent: Left: 41.95pt
+  Runs: '本合同的附件为本合同不可分割之组成部分，与本合同具有同等法律':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 80:
+  Text: '若本合同之某一条款的全部或部分被判定无效，不影响本合同其它条款及该条款其余部分的效力。'
+  Style: Normal
+  Numbering: ID=44, Level=0
+  Indent: Left: 41.95pt
+  Runs: '若本合同之某一条款的全部或部分被判定无效，不影响本合同其它条':Size:9.0
+------------------------------
+Para 82:
+  Text: '其他约定事项：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '其他约定事项：':Size:9.0
+------------------------------
+Para 85:
+  Text: '合同附则：'
+  Style: Normal
+  Numbering: ID=2, Level=0
+  Indent: Left: 27.0pt, First: -27.0pt
+  Runs: '合同附则：':Size:9.0
+------------------------------
+Para 86:
+  Text: '本合同而发生之一切税费，由双方各自承担。'
+  Style: Normal
+  Numbering: ID=45, Level=0
+  Runs: '本合同而发生之一切税费，由双方各自承担':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 87:
+  Text: '双方按本合同约定向对方发送书面通知，应送往本合同落款处双方所记载的联系地址，除非在发送书面通知前已收到对方以书面方式提供的新的通讯地址。'
+  Style: Normal
+  Numbering: ID=45, Level=0
+  Indent: Left: 41.95pt
+  Runs: '双方按本合同约定向对方发送书面通知，应送往本合同落款':Size:9.0 | '处双方':Size:9.0 | '所记载的联系地址，除非在发送书面通知前已收到对方以书面方式提':Size:9.0 | '。':Size:9.0
+------------------------------
+Para 88:
+  Text: '本合同正本一式  份，甲乙双方各执  份。'
+  Style: Normal
+  Numbering: ID=45, Level=0
+  Indent: Left: 41.95pt
+  Runs: '本合同正本一式':Size:9.0 | '  ':Size:9.0,Underline:True,FontUnderline:True | '份，甲乙双方各执':Size:9.0 | '  ':Size:9.0,Underline:True,FontUnderline:True | '份。':Size:9.0
+------------------------------
+Para 90:
+  Text: '附件一：'
+  Style: Normal
+  Runs: '附件一：':Size:9.0
+------------------------------
+Para 91:
+  Text: '附件二：'
+  Style: Normal
+  Runs: '附件二：':Size:9.0
+------------------------------
+Para 93:
+  Text: '附件一'
+  Style: Normal
+  Runs: '附件一':Size:12.0
+------------------------------
+Para 94:
+  Text: '关于富士通产品的高度安全使用要求'
+  Style: Normal
+  Indent: First: 22.7pt
+  Runs: '关于富士通产品的高度安全使用要求':Bold,Size:9.0
+------------------------------
+Para 95:
+  Text: '序言'
+  Style: Normal
+  Runs: '序言':Size:9.0
+------------------------------
+Para 96:
+  Text: '许多的富士通产品是为普通使用而进行设计和制造的, 如普通的办公室、 家庭、 个人和普通工业使用(下文将称为普通使用)。超出富士通产品的普通使用范围时——即要求非常高水准的安全预防, 且除非采取适当安全'
+  Style: Normal
+  Indent: First: 22.7pt
+  Runs: '许多的富士通产品是为普通使用而进行设计和制造的':Size:9.0 | ', ':Size:9.0 | '如普通的办公室、':Size:9.0 | ' ':Size:9.0 | '家庭、':Size:9.0 | ' ':Size:9.0 | '个人和普通工业使':Size:9.0 | '用(下文将称为':Size:9.0 | '普通使用':Bold,Size:9.0 | ')':Size:9.0 | '。超出富士通产品的普通使用范围时':Size:9.0 | '——':Size:9.0 | '即要求非常高水准的安全预防':Size:9.0 | ', ':Size:9.0 | '且除非采取适当安全预防':Size:9.0 | ', ':Size:9.0 | '否则将有死亡或身体损伤的潜在危险的情形':Size:9.0 | '（':Size:9.0 | '下文称为':Size:9.0 | '“需要高度安全使用”':Size:9.0 | '）':Size:9.0 | '——':Size:9.0 | '客户必须采取一些措施确认富士通的产品达到':Size:9.0 | '“需要高度安全使用”的':Size:9.0 | '安全水平。':Size:9.0
+------------------------------
+Para 97:
+  Text: '我们将在此陈述在“需要高度安全使用”的情形下的富士通产品的使用方法。'
+  Style: Normal
+  Indent: First: 22.7pt
+  Runs: '我们将在此陈':Size:9.0 | '述在“需要高度安全使用”的情':Size:9.0 | '形下的富士通产品的使用方法。':Size:9.0
+------------------------------
+Para 98:
+  Text: '“高度安全使用”的范围'
+  Style: Normal
+  Numbering: ID=15, Level=0
+  Runs: ' “高度安全使用”':Size:9.0 | '的范围':Size:9.0
+------------------------------
+Para 99:
+  Text: '“需要高度安全使用”是指使用要求非常高水准的安全预防, 且除非采取适当安全预防, 否则将有死亡或身体损伤的潜在直接危险。该使用包括但不限于:'
+  Style: Body Text 3
+  Indent: Left: 21.0pt
+  Runs: ' ':Size:9.0 | '“需要高度安全使用”':Size:9.0 | '是指使用要求非常高水准的安全预防':Size:9.0 | ', ':Size:9.0 | '且除非采取适当安全预防':Size:9.0 | ', ':Size:9.0 | '否则将有死亡或身体损伤的潜在直接危险。该使用包括但不限于':Size:9.0 | ': ':Size:9.0
+------------------------------
+Para 100:
+  Text: '核设施的核反应控制;'
+  Style: Normal
+  Numbering: ID=16, Level=0
+  Indent: Left: 52.75pt
+  Runs: '核设施的核反应控制':Size:9.0 | '; ':Size:9.0
+------------------------------
+Para 101:
+  Text: '飞行器自动飞行控制;'
+  Style: Normal
+  Numbering: ID=16, Level=0
+  Indent: Left: 52.75pt
+  Runs: '飞行器自动飞行控制':Size:9.0 | '; ':Size:9.0
+------------------------------
+Para 102:
+  Text: '航空交通管制'
+  Style: Normal
+  Numbering: ID=16, Level=0
+  Indent: Left: 52.75pt
+  Runs: '航空交通管制':Size:9.0
+------------------------------
+Para 103:
+  Text: '大量运输系统的运送控制'
+  Style: Normal
+  Numbering: ID=16, Level=0
+  Indent: Left: 52.75pt
+  Runs: '大量运输系统的运送控制':Size:9.0
+------------------------------
+Para 104:
+  Text: '维持生命的医疗用机器；'
+  Style: Normal
+  Numbering: ID=16, Level=0
+  Indent: Left: 52.75pt
+  Runs: '维持生命的医疗用机器；':Size:9.0
+------------------------------
+Para 105:
+  Text: '武器系统中的导弹发射控制。'
+  Style: Normal
+  Numbering: ID=16, Level=0
+  Indent: Left: 52.75pt
+  Runs: '武器系统中的导弹发射控制。':Size:9.0 | ' ':Size:9.0
+------------------------------
+Para 106:
+  Text: '“需要高度安全使用” 为用途的使用时'
+  Style: Normal
+  Numbering: ID=15, Level=0
+  Runs: '“需要高度安全使用” ':Size:9.0 | '为用途的使用时':Size:9.0
+------------------------------
+Para 107:
+  Text: '甲方通知乙方其产品给最终用户用于“需要高度安全使用”时, 应正确理解其要求的高度安全使用的安全性，并为此有必要与乙方（根据个别情况）共同对产品进行特别的再确认。'
+  Style: Body Text 3
+  Indent: Left: 21.0pt
+  Runs: '甲方通知乙方其产品给最终用户用于':Size:9.0 | '“':Size:9.0 | '需要高度安全使用':Size:9.0 | '”':Size:9.0 | '时':Size:9.0 | ', ':Size:9.0 | '应正确理解其要求的高度安全使用的安全性，并为此有必要与乙方（':Size:9.0
+------------------------------
+Para 108:
+  Text: '对象产品'
+  Style: Normal
+  Numbering: ID=15, Level=0
+  Runs: '对象产品':Size:9.0
+------------------------------
+Para 109:
+  Text: '对象为所有的富士通产品, 包括硬件、软件和服务。'
+  Style: Normal
+  Indent: Left: 21.0pt
+  Runs: '对象为所有的富士通产品':Size:9.0 | ', ':Size:9.0 | '包括硬件、软件和服务。':Size:9.0
+------------------------------
+
+==================================================
+DocService HTML Preview
+==================================================
+Found: True
+BlockText: '    二、 交货方式、日期及最终用户：\n      1． □乙方应按规定的日期将产品送至甲方指定的地点，运费由乙方承担。\n       □甲方自提，运费由甲方承担。\n      2． 运输方式：\n      3． 交货地点：\n      4． 交货日期：\n      5． 最终用户：'
+BlockHtml: <p style='padding-left: 27.0pt; text-indent: -27.0pt'>二、 交货方式、日期及最终用户：</p><p style='padding-left: 41.95pt'>1． □乙方应按规定的日期将产品送至甲方指定的地点，运费由乙方承担。</p><p style='padding-left: 42.0pt'>□甲方自提，运费由甲方承担。</p><p style='padding-left: 41.95pt'>2． 运输方式：<span style="text-decoration: underline">                                    </span></p><p style='padding-left: 41.95pt'>3． 交货地点：<span style="text-decoration: underline">                                    </span></p><p style='padding-left: 41.95pt'>4． 交货日期：<span style="text-decoration: underline">                                    </span></p><p style='padding-left: 41.95pt'>5． 最终用户：<span style="text-decoration: underline">                                    </span></p>
+
+Changed Diff Preview
+ChangedFound: True
+HasUnderlineSpan: True
+HasTransportText: True
+
+==================================================
+Total Tables: 2
+==================================================
+Table 0: 6 rows x 8 cols
+  Row 0: ['产品名称', '型号', '商标', '产地', '数量', '单价', '总价', '备注']
+  Row 1: ['', '', '', '', '', '', '', '']
+  Row 2: ['', '', '', '', '', '', '', '']
+  Row 3: ['', '', '', '', '', '', '', '']
+  Row 4: ['', '', '', '', '', '', '', '']
+  Row 5: ['合计金额（大写）：', '合计金额（大写）：', '合计金额（大写）：', '合计金额（大写）：', '合计金额（大写）：', '合计金额（大写）：', '合计金额（大写）：', '合计金额（大写）：']
+------------------------------
+Table 1: 6 rows x 4 cols
+  Row 0: ['甲  方：', '', '乙  方：', '富士通（中国）信息系统有限公司']
+  Row 1: ['法定代表人或授权代表：', '', '法定代表人或授权代表：', '']
+  Row 2: ['联系地址：', '', '联系地址：', '上海市浦东新区陆家嘴环路1000号恒生银行大厦19楼012室']
+  Row 3: ['邮政编码：', '', '邮政编码：', '200120']
+  Row 4: ['联系电话：', '', '联系电话：', '+86(21)58871000']
+  Row 5: ['传真：', '', '传真：', '+86(21)58775280']
+------------------------------

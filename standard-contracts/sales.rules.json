@@ -1,0 +1,371 @@
+{
+  "schemaVersion": "1",
+  "heading": {
+    "enabled": true,
+    "maxLevel": 2
+  },
+  "placeholder": {
+    "enabled": true
+  },
+  "deletedClause": {
+    "enabled": true
+  },
+  "blockRules": {
+    "b_0001": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0002": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0003": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0004": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0005": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0006": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0007": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0008": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0009": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0010": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0011": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0012": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0013": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0014": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0015": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0016": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0017": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0018": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0019": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0020": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0021": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0022": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0023": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0024": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0025": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0026": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0027": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0028": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0029": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0030": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0031": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0032": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0033": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0034": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0035": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0036": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0037": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0038": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0039": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0040": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0041": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0042": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0043": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0044": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0045": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0046": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0047": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0048": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0049": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0050": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0051": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0052": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0053": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0054": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0055": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0056": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0057": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0058": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0059": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0060": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0061": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0062": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0063": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0064": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0065": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0066": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0067": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0068": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0069": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0070": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0071": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0072": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0073": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0074": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0075": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0076": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0077": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0078": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0079": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0080": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0081": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0082": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0083": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0084": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0085": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0086": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0087": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0088": {
+      "enabled": true,
+      "rule": ""
+    },
+    "b_0089": {
+      "enabled": true,
+      "rule": ""
+    }
+  }
+}

@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-docx
+pypandoc
+langchain
+openai
+tiktoken
+diff-match-patch
+beautifulsoup4
