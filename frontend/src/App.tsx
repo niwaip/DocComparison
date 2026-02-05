@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 // --- Interfaces ---
 
@@ -72,18 +72,48 @@ function App() {
   const [showOnlyDiff, setShowOnlyDiff] = useState(false)
   const [activeDiffIndex, setActiveDiffIndex] = useState(0)
   const [activeRowId, setActiveRowId] = useState<string | null>(null)
-  const [mode, setMode] = useState<'compare' | 'config'>('compare')
+  const [configOpen, setConfigOpen] = useState(false)
   const [templateId, setTemplateId] = useState('sales_contract_cn')
   const [aiEnabled, setAiEnabled] = useState(false)
+  const [attachmentPaneOpen, setAttachmentPaneOpen] = useState(true)
+  const [uploadPaneCollapsed, setUploadPaneCollapsed] = useState(false)
+  const [rulesetOptions, setRulesetOptions] = useState<Array<{ templateId: string, name: string }>>([
+    { templateId: 'sales_contract_cn', name: '买卖合同（销售）' }
+  ])
   const [checkLoading, setCheckLoading] = useState(false)
   const [checkRun, setCheckRun] = useState<CheckRunResponse | null>(null)
-  const [checkFilter, setCheckFilter] = useState<'all' | 'issues'>('issues')
-  const [checkExpanded, setCheckExpanded] = useState(false)
+  const [checkFilter, setCheckFilter] = useState<'all' | 'issues'>('all')
   const [checkPaneOpen, setCheckPaneOpen] = useState(false)
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [rulesetJson, setRulesetJson] = useState('')
   const [rulesetLoading, setRulesetLoading] = useState(false)
   const [templateBlocks, setTemplateBlocks] = useState<Block[]>([])
   const [blockPrompts, setBlockPrompts] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('/api/check/rulesets')
+        if (!res.ok) return
+        const items = await res.json()
+        if (cancelled) return
+        if (!Array.isArray(items)) return
+        const next = items
+          .filter((x: any) => x && typeof x.templateId === 'string')
+          .map((x: any) => ({ templateId: String(x.templateId), name: typeof x.name === 'string' ? x.name : String(x.templateId) }))
+        if (next.length > 0) setRulesetOptions(next)
+      } catch {
+        if (cancelled) return
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   // Helper to map blockId to Block object for rendering
   const getBlock = (blocks: Block[], id: string | null) => {
@@ -104,7 +134,7 @@ function App() {
       })
 
       if (!res.ok) {
-        throw new Error(`Failed to parse ${side} file: ${res.statusText}`)
+        throw new Error(`解析${side === 'left' ? '左侧' : '右侧'}文件失败：${res.statusText}`)
       }
 
       const blocks: Block[] = await res.json()
@@ -120,7 +150,7 @@ function App() {
 
   const handleDiff = async () => {
     if (leftBlocks.length === 0 || rightBlocks.length === 0) {
-      setError('Both files must be parsed first.')
+      setError('请先解析左右两份文件。')
       return
     }
 
@@ -139,7 +169,7 @@ function App() {
       })
 
       if (!res.ok) {
-        throw new Error(`Diff failed: ${res.statusText}`)
+        throw new Error(`对比失败：${res.statusText}`)
       }
 
       const rows: AlignmentRow[] = await res.json()
@@ -147,8 +177,8 @@ function App() {
       setActiveDiffIndex(0)
       setActiveRowId(null)
       setCheckRun(null)
-      setCheckExpanded(false)
       setCheckPaneOpen(false)
+      setUploadPaneCollapsed(true)
       await runChecks()
     } catch (err: any) {
       console.error(err)
@@ -206,13 +236,13 @@ function App() {
           {side === 'left' ? '📄' : '📝'}
         </div>
         <div className="upload-info">
-          <h3>{side === 'left' ? 'Original Document' : 'Revised Document'}</h3>
+          <h3>{side === 'left' ? '原始文档' : '修订文档'}</h3>
           <p className={fileName ? 'file-name' : 'placeholder'}>
-            {fileName || 'Click to upload .docx'}
+            {fileName || '点击上传 .docx'}
           </p>
           {blocks.length > 0 && (
             <div className="status-badge">
-              ✓ {blocks.length} blocks parsed
+              ✓ 已解析 {blocks.length} 个分块
             </div>
           )}
         </div>
@@ -266,7 +296,7 @@ function App() {
           aiEnabled
         })
       })
-      if (!res.ok) throw new Error(`Check failed: ${res.statusText}`)
+      if (!res.ok) throw new Error(`检查失败：${res.statusText}`)
       const payload: CheckRunResponse = await res.json()
       setCheckRun(payload)
     } catch (err: any) {
@@ -282,7 +312,7 @@ function App() {
     setError('')
     try {
       const res = await fetch(`/api/check/rulesets/${encodeURIComponent(templateId)}`)
-      if (!res.ok) throw new Error(`Load ruleset failed: ${res.statusText}`)
+      if (!res.ok) throw new Error(`加载规则集失败：${res.statusText}`)
       const obj = await res.json()
       setRulesetJson(JSON.stringify(obj, null, 2))
     } catch (err: any) {
@@ -303,7 +333,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed)
       })
-      if (!res.ok) throw new Error(`Save ruleset failed: ${res.statusText}`)
+      if (!res.ok) throw new Error(`保存规则集失败：${res.statusText}`)
       const obj = await res.json()
       setRulesetJson(JSON.stringify(obj, null, 2))
     } catch (err: any) {
@@ -321,7 +351,7 @@ function App() {
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch('/api/parse', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error(`Failed to parse template: ${res.statusText}`)
+      if (!res.ok) throw new Error(`解析标准合同失败：${res.statusText}`)
       const blocks: Block[] = await res.json()
       setTemplateBlocks(blocks)
       setBlockPrompts({})
@@ -361,98 +391,128 @@ function App() {
     }
   }
 
-  const renderCheckPanel = () => (
-    <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ fontWeight: 800 }}>检查结果</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {checkRun?.runId && <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' }}>{checkRun.runId}</div>}
-          <button className="btn-secondary" onClick={() => { setCheckPaneOpen(v => !v); if (checkPaneOpen) setCheckExpanded(false) }} disabled={!checkRun}>
-            {checkPaneOpen ? '收起检查栏' : '展开检查栏'}
-          </button>
+  const renderCheckPanel = () => {
+    if (!checkRun) return null
+    const items = checkRun.items.filter(it => checkFilter === 'all' ? true : it.status !== 'pass')
+    return (
+      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontWeight: 800 }}>检查结果</div>
+          {checkRun.runId && <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' }}>{checkRun.runId}</div>}
         </div>
-      </div>
-      {checkRun ? (
-        checkPaneOpen ? (
-          <>
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn-secondary" title="仅展示非 PASS 的检查项" onClick={() => setCheckFilter('issues')} disabled={checkFilter === 'issues'}>只看问题</button>
-              <button className="btn-secondary" title="展示全部检查项（含 PASS）" onClick={() => setCheckFilter('all')} disabled={checkFilter === 'all'}>全部</button>
-              <button className="btn-secondary" onClick={() => setCheckExpanded(v => !v)}>{checkExpanded ? '收起明细' : '展开明细'}</button>
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-              通过 {checkRun.summary?.counts?.pass ?? 0} · 不通过 {checkRun.summary?.counts?.fail ?? 0} · 警告 {checkRun.summary?.counts?.warn ?? 0} · 需人工 {checkRun.summary?.counts?.manual ?? 0}
-            </div>
-            {checkExpanded ? (
-              <div style={{ marginTop: 10, display: 'grid', gap: 8, paddingRight: 2 }}>
-                {checkRun.items
-                  .filter(it => checkFilter === 'all' ? true : it.status !== 'pass')
-                  .map(it => {
-                    const color = it.status === 'fail' ? 'rgba(185, 28, 28, 1)' : it.status === 'warn' ? 'rgba(146, 64, 14, 1)' : it.status === 'manual' ? 'rgba(30, 64, 175, 1)' : 'rgba(15,23,42,0.70)'
-                    const bg = it.status === 'fail' ? 'rgba(239,68,68,0.08)' : it.status === 'warn' ? 'rgba(245,158,11,0.10)' : it.status === 'manual' ? 'rgba(37,99,235,0.08)' : 'rgba(15,23,42,0.04)'
-                    return (
-                      <div key={it.pointId} style={{ border: '1px solid rgba(15,23,42,0.10)', borderRadius: 12, padding: 10, background: bg }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                          <div style={{ fontWeight: 750, lineHeight: 1.25 }}>{it.title}</div>
-                        </div>
-                        <div style={{ marginTop: 6, color, fontWeight: 750, fontSize: 12 }}>
-                          {it.status.toUpperCase()} · {it.severity.toUpperCase()}
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(15,23,42,0.80)' }}>{it.message}</div>
-                        {it.evidence?.excerpt && (
-                          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)' }}>{it.evidence.excerpt}</div>
-                        )}
-                        {it.ai?.summary && (
-                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed rgba(15,23,42,0.12)', fontSize: 12, color: 'rgba(15,23,42,0.78)' }}>
-                            AI：{it.ai.summary}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-              </div>
-            ) : (
-              <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-                明细已收起。
-              </div>
-            )}
-          </>
-        ) : (
-          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-            通过 {checkRun.summary?.counts?.pass ?? 0} · 不通过 {checkRun.summary?.counts?.fail ?? 0} · 警告 {checkRun.summary?.counts?.warn ?? 0} · 需人工 {checkRun.summary?.counts?.manual ?? 0}
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
+          通过 {checkRun.summary?.counts?.pass ?? 0} · 不通过 {checkRun.summary?.counts?.fail ?? 0} · 警告 {checkRun.summary?.counts?.warn ?? 0} · 需人工 {checkRun.summary?.counts?.manual ?? 0}
+        </div>
+        {items.length > 0 ? (
+          <div style={{ marginTop: 10, display: 'grid', gap: 8, paddingRight: 2 }}>
+            {items.map(it => {
+              const color = it.status === 'fail' ? 'rgba(185, 28, 28, 1)' : it.status === 'warn' ? 'rgba(146, 64, 14, 1)' : it.status === 'manual' ? 'rgba(30, 64, 175, 1)' : 'var(--text)'
+              const bg = it.status === 'fail' ? 'rgba(239,68,68,0.10)' : it.status === 'warn' ? 'rgba(245,158,11,0.14)' : it.status === 'manual' ? 'rgba(37,99,235,0.10)' : 'rgba(255,255,255,0.06)'
+              return (
+                <div key={it.pointId} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 10, background: bg }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ fontWeight: 750, lineHeight: 1.25 }}>{it.title}</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color }}>
+                      {it.status.toUpperCase()}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text)' }}>{it.message}</div>
+                  {it.evidence?.excerpt && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)' }}>{it.evidence.excerpt}</div>
+                  )}
+                  {it.ai?.summary && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--control-border)', fontSize: 12, color: 'var(--muted)' }}>
+                      AI：{it.ai.summary}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        )
-      ) : (
-        <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)' }}>
-          对比后会自动执行检查，也可点击工具栏“运行检查”手动执行。
-        </div>
-      )}
-    </div>
-  )
+        ) : (
+          <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)' }}>
+            {checkFilter === 'issues' ? '未发现问题。' : '无检查项。'}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="app-container">
       <style>{`
         :root{
-          --bg: #0b1220;
-          --panel: rgba(255,255,255,0.92);
-          --panel-solid: #ffffff;
-          --border: rgba(17,24,39,0.10);
-          --text: #0f172a;
-          --muted: rgba(15,23,42,0.62);
           --primary: #2563eb;
           --primary-pressed: #1d4ed8;
-          --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
           --radius: 14px;
+        }
+        :root[data-theme="dark"]{
+          --bg: radial-gradient(1200px 800px at 20% -10%, rgba(37,99,235,0.20), transparent 55%),
+                radial-gradient(1000px 700px at 90% 0%, rgba(16,185,129,0.12), transparent 55%),
+                radial-gradient(900px 700px at 40% 110%, rgba(147,197,253,0.10), transparent 55%),
+                linear-gradient(180deg, rgba(8,12,20,1), rgba(11,18,32,1));
+          --panel: rgba(15,23,42,0.72);
+          --panel-solid: rgba(15,23,42,0.86);
+          --border: rgba(148,163,184,0.18);
+          --text: rgba(226,232,240,0.96);
+          --muted: rgba(226,232,240,0.62);
+          --shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+          --control-bg: rgba(2, 6, 23, 0.30);
+          --control-bg-hover: rgba(2, 6, 23, 0.42);
+          --control-border: rgba(148,163,184,0.22);
+          --control-text: rgba(226,232,240,0.92);
+          --table-head-bg: rgba(2, 6, 23, 0.38);
+          --divider-bg: rgba(2, 6, 23, 0.40);
+          --error-bg: rgba(239,68,68,0.14);
+          --error-border: rgba(239,68,68,0.28);
+          --error-text: rgba(254,226,226,0.96);
+          --row-ins-bg: rgba(16,185,129,0.16);
+          --row-del-bg: rgba(239,68,68,0.16);
+          --row-chg-bg: rgba(245,158,11,0.16);
+          --row-ins-accent: rgba(16,185,129,0.95);
+          --row-del-accent: rgba(239,68,68,0.95);
+          --row-chg-accent: rgba(245,158,11,0.95);
+          --diff-ins-bg: rgba(34,197,94,0.26);
+          --diff-ins-text: rgba(220,252,231,0.98);
+          --diff-del-bg: rgba(239,68,68,0.22);
+          --diff-del-text: rgba(254,226,226,0.98);
+        }
+        :root[data-theme="light"]{
+          --bg: radial-gradient(1200px 800px at 20% -10%, rgba(37,99,235,0.22), transparent 55%),
+                radial-gradient(1000px 700px at 90% 0%, rgba(16,185,129,0.14), transparent 50%),
+                radial-gradient(900px 700px at 40% 110%, rgba(147,197,253,0.14), transparent 55%),
+                linear-gradient(180deg, rgba(245,247,251,1), rgba(235,242,255,1));
+          --panel: rgba(226,232,240,0.92);
+          --panel-solid: rgba(241,245,249,0.94);
+          --border: rgba(15,23,42,0.14);
+          --text: #0f172a;
+          --muted: rgba(15,23,42,0.62);
+          --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+          --control-bg: rgba(255,255,255,0.65);
+          --control-bg-hover: rgba(255,255,255,0.86);
+          --control-border: rgba(15,23,42,0.10);
+          --control-text: rgba(15,23,42,0.85);
+          --table-head-bg: rgba(226,232,240,0.92);
+          --divider-bg: rgba(15,23,42,0.03);
+          --error-bg: rgba(239,68,68,0.10);
+          --error-border: rgba(239,68,68,0.25);
+          --error-text: rgba(153, 27, 27, 1);
+          --row-ins-bg: rgba(16,185,129,0.10);
+          --row-del-bg: rgba(239,68,68,0.10);
+          --row-chg-bg: rgba(245,158,11,0.10);
+          --row-ins-accent: rgba(2,122,72,1);
+          --row-del-accent: rgba(185,28,28,1);
+          --row-chg-accent: rgba(146,64,14,1);
+          --diff-ins-bg: rgba(22,163,74,0.16);
+          --diff-ins-text: rgba(20,83,45,1);
+          --diff-del-bg: rgba(220,38,38,0.14);
+          --diff-del-text: rgba(153,27,27,1);
         }
 
         body {
           margin: 0;
           color: var(--text);
-          background:
-            radial-gradient(1200px 800px at 20% -10%, rgba(37,99,235,0.22), transparent 55%),
-            radial-gradient(1000px 700px at 90% 0%, rgba(16,185,129,0.14), transparent 50%),
-            #f5f7fb;
+          background: var(--bg);
         }
 
         .app-container {
@@ -520,9 +580,9 @@ function App() {
           flex-wrap: wrap;
         }
         .btn-secondary {
-          background: rgba(15,23,42,0.03);
-          color: rgba(15,23,42,0.85);
-          border: 1px solid rgba(15,23,42,0.10);
+          background: var(--control-bg);
+          color: var(--control-text);
+          border: 1px solid var(--control-border);
           border-radius: 12px;
           padding: 10px 12px;
           font-size: 13px;
@@ -530,26 +590,183 @@ function App() {
           cursor: pointer;
           transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
         }
-        .btn-secondary:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(2, 6, 23, 0.08); background: rgba(15,23,42,0.05); }
+        .btn-secondary:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(2, 6, 23, 0.18); background: var(--control-bg-hover); }
         .btn-secondary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
         .switch {
           display: inline-flex;
+          position: relative;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           padding: 8px 10px;
-          border: 1px solid rgba(15,23,42,0.10);
+          border: 1px solid var(--control-border);
           border-radius: 999px;
-          background: rgba(255,255,255,0.65);
+          background: var(--control-bg);
           user-select: none;
+          cursor: pointer;
         }
-        .switch input { width: 16px; height: 16px; }
-        .switch span { font-size: 13px; font-weight: 650; color: rgba(15,23,42,0.78); }
+        .switch input {
+          position: absolute;
+          opacity: 0;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+        }
+        .switch-ui {
+          width: 40px;
+          height: 22px;
+          border-radius: 999px;
+          background: var(--divider-bg);
+          position: relative;
+          transition: background 0.12s ease, box-shadow 0.12s ease;
+          flex: 0 0 auto;
+        }
+        .switch-ui::after {
+          content: '';
+          position: absolute;
+          top: 3px;
+          left: 3px;
+          width: 16px;
+          height: 16px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.98);
+          box-shadow: 0 6px 12px rgba(2, 6, 23, 0.12);
+          transition: transform 0.12s ease;
+        }
+        .switch input:checked + .switch-ui { background: rgba(37,99,235,0.55); }
+        .switch input:checked + .switch-ui::after { transform: translateX(18px); }
+        .switch input:focus-visible + .switch-ui { box-shadow: 0 0 0 3px rgba(37,99,235,0.22); }
+        .switch-text { font-size: 13px; font-weight: 650; color: var(--control-text); }
+
+        .upload-wrap {
+          display: flex;
+          gap: 14px;
+          align-items: stretch;
+          margin: 14px 0 18px;
+        }
+        .upload-collapsed {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin: 14px 0 18px;
+          padding: 10px 12px;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: 0 10px 28px rgba(2, 6, 23, 0.10);
+          backdrop-filter: blur(10px);
+        }
+        .upload-collapsed-files{
+          display: grid;
+          gap: 4px;
+          min-width: 0;
+        }
+        .upload-collapsed-files div{
+          font-size: 12px;
+          color: var(--muted);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 1100px;
+        }
+        .upload-collapsed-files b{
+          color: var(--text);
+        }
+
+        .mid-actions {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 10px;
+          margin: -6px 0 14px;
+          padding: 10px 12px;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: 0 10px 28px rgba(2, 6, 23, 0.10);
+          backdrop-filter: blur(10px);
+        }
+        .toggle-group {
+          display: inline-flex;
+          align-items: center;
+          border: 1px solid var(--control-border);
+          border-radius: 999px;
+          background: var(--control-bg);
+          overflow: hidden;
+        }
+        .toggle-btn {
+          appearance: none;
+          border: 0;
+          background: transparent;
+          padding: 8px 10px;
+          font-size: 14px;
+          font-weight: 800;
+          color: var(--muted);
+          cursor: pointer;
+          transition: background 0.12s ease, color 0.12s ease;
+          min-width: 40px;
+        }
+        .toggle-btn:hover { background: var(--control-bg-hover); }
+        .toggle-btn.active { background: rgba(37,99,235,0.16); color: rgba(37,99,235,1); }
+        .toggle-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .icon-btn {
+          width: 38px;
+          height: 38px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 12px;
+          border: 1px solid var(--control-border);
+          background: var(--control-bg);
+          color: var(--control-text);
+          cursor: pointer;
+          transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+          font-size: 16px;
+        }
+        .icon-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(2, 6, 23, 0.18); background: var(--control-bg-hover); }
+        .icon-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
 
         .upload-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 14px;
-          margin: 14px 0 18px;
+          margin: 0;
+          flex: 1 1 auto;
+        }
+
+        .side-actions {
+          width: 320px;
+          flex: 0 0 320px;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 14px;
+          box-shadow: 0 6px 18px rgba(2, 6, 23, 0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          justify-content: space-between;
+        }
+        .side-actions-top {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 12px;
+          align-items: end;
+        }
+        .field-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+        .select {
+          width: 100%;
+          height: 38px;
+          border-radius: 12px;
+          border: 1px solid var(--control-border);
+          padding: 0 10px;
+          font-weight: 650;
+          background: var(--control-bg);
+          color: var(--control-text);
+        }
+        .side-actions-buttons {
+          display: grid;
+          gap: 10px;
         }
         .file-upload-card {
           background: var(--panel);
@@ -563,46 +780,84 @@ function App() {
           transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
           box-shadow: 0 6px 18px rgba(2, 6, 23, 0.06);
         }
-        .file-upload-card:hover { transform: translateY(-1px); border-color: rgba(37,99,235,0.35); box-shadow: 0 10px 24px rgba(2, 6, 23, 0.10); }
-        .upload-icon { font-size: 28px; opacity: 0.9; }
-        .upload-info h3 { margin: 0 0 4px 0; font-size: 14px; font-weight: 650; }
-        .file-name { color: var(--primary); font-weight: 600; margin: 0; }
+        .file-upload-card:hover { transform: translateY(-1px); border-color: rgba(37,99,235,0.35); box-shadow: 0 10px 24px rgba(2, 6, 23, 0.18); }
+        .upload-icon { font-size: 28px; opacity: 0.9; color: var(--text); }
+        .upload-info h3 { margin: 0 0 4px 0; font-size: 14px; font-weight: 650; color: var(--text); }
+        .file-name { color: rgba(37,99,235,1); font-weight: 650; margin: 0; }
         .placeholder { color: var(--muted); margin: 0; }
-        .status-badge { display: inline-block; margin-top: 8px; font-size: 12px; color: rgba(2, 122, 72, 1); background: rgba(16,185,129,0.14); padding: 3px 10px; border-radius: 999px; font-weight: 600; }
+        .status-badge { display: inline-block; margin-top: 8px; font-size: 12px; color: rgba(16,185,129,1); background: rgba(16,185,129,0.16); border: 1px solid rgba(16,185,129,0.22); padding: 3px 10px; border-radius: 999px; font-weight: 650; }
 
-        .error-msg { padding: 12px 14px; background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.25); border-radius: var(--radius); color: rgba(153, 27, 27, 1); margin: 10px 0 18px; display: flex; align-items: center; gap: 8px; box-shadow: 0 6px 14px rgba(2, 6, 23, 0.05); }
+        .modal-overlay{
+          position: fixed;
+          inset: 0;
+          background: rgba(2, 6, 23, 0.55);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+          z-index: 999;
+        }
+        .modal{
+          width: min(1180px, 100%);
+          max-height: min(86vh, 900px);
+          overflow: auto;
+          background: var(--panel-solid);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          box-shadow: 0 30px 80px rgba(2, 6, 23, 0.35);
+          backdrop-filter: blur(10px);
+        }
+        .modal-topbar{
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 12px 14px;
+          background: var(--table-head-bg);
+          border-bottom: 1px solid var(--border);
+          backdrop-filter: blur(10px);
+        }
+        .modal-title{
+          font-weight: 850;
+          color: var(--text);
+        }
+
+        .error-msg { padding: 12px 14px; background: var(--error-bg); border: 1px solid var(--error-border); border-radius: var(--radius); color: var(--error-text); margin: 10px 0 18px; display: flex; align-items: center; gap: 8px; box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
 
         .diff-container {
           background: var(--panel-solid);
           border: 1px solid var(--border);
           border-radius: var(--radius);
           box-shadow: var(--shadow);
-          overflow: auto;
-          max-height: calc(100vh - 230px);
+          overflow: visible;
+          max-height: none;
         }
         table { border-collapse: collapse; width: 100%; table-layout: fixed; }
         thead th {
           position: sticky;
           top: 0;
           z-index: 3;
-          background: rgba(248, 250, 252, 0.92);
+          background: var(--table-head-bg);
           backdrop-filter: blur(10px);
           color: var(--muted);
           font-weight: 650;
           font-size: 12px;
-          padding: 12px 14px;
+          padding: 10px 12px;
           text-align: left;
           border-bottom: 1px solid var(--border);
         }
         td {
-          padding: 12px 14px;
-          border-bottom: 1px solid rgba(15,23,42,0.06);
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border);
           vertical-align: top;
           font-size: 14px;
           line-height: 1.65;
           color: var(--text);
         }
-        tbody tr:hover td { background: rgba(2, 6, 23, 0.02); }
+        tbody tr:hover td { background: rgba(255,255,255,0.03); }
         tr.diff-row-active td { box-shadow: inset 0 0 0 2px rgba(37,99,235,0.28); }
         tr:last-child td { border-bottom: none; }
         
@@ -614,15 +869,54 @@ function App() {
         .block-content p:last-child { margin-bottom: 0; }
         .block-content ul, .block-content ol { margin: 4px 0; padding-left: 24px; }
         .block-content li { margin-bottom: 4px; }
+
+        .block-content ins{
+          background: var(--diff-ins-bg) !important;
+          color: var(--diff-ins-text) !important;
+          text-decoration: none !important;
+          padding: 0 2px;
+          border-radius: 4px;
+          box-shadow: 0 0 0 1px rgba(34,197,94,0.35), inset 0 -2px 0 rgba(34,197,94,0.55);
+        }
+        .block-content del{
+          background: var(--diff-del-bg) !important;
+          color: var(--diff-del-text) !important;
+          text-decoration: line-through !important;
+          text-decoration-thickness: 2px;
+          text-decoration-color: rgba(239,68,68,0.90);
+          padding: 0 2px;
+          border-radius: 4px;
+          box-shadow: 0 0 0 1px rgba(239,68,68,0.35), inset 0 -2px 0 rgba(239,68,68,0.35);
+        }
         
-        .bg-inserted { background-color: rgba(16,185,129,0.06); }
-        .bg-inserted .status-cell { color: rgba(2, 122, 72, 1); }
-        .bg-deleted { background-color: rgba(239,68,68,0.06); }
-        .bg-deleted .status-cell { color: rgba(185, 28, 28, 1); }
-        .bg-changed { background-color: rgba(245, 158, 11, 0.06); }
-        .bg-changed .status-cell { color: rgba(146, 64, 14, 1); }
+        .bg-inserted { background-color: var(--row-ins-bg); }
+        .bg-inserted .status-cell { color: var(--row-ins-accent); }
+        .bg-deleted { background-color: var(--row-del-bg); }
+        .bg-deleted .status-cell { color: var(--row-del-accent); }
+        .bg-changed { background-color: var(--row-chg-bg); }
+        .bg-changed .status-cell { color: var(--row-chg-accent); }
+        .bg-inserted td:first-child { box-shadow: inset 4px 0 0 var(--row-ins-accent); }
+        .bg-deleted td:first-child { box-shadow: inset 4px 0 0 var(--row-del-accent); }
+        .bg-changed td:first-child { box-shadow: inset 4px 0 0 var(--row-chg-accent); }
         
-        .status-cell { text-align: center; font-weight: 800; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 14px; user-select: none; }
+        td.status-cell { 
+          text-align: center; 
+          font-weight: 900; 
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; 
+          font-size: 14px; 
+          user-select: none;
+          padding: 0;
+          background: var(--divider-bg);
+          border-left: 1px solid var(--control-border);
+          border-right: 1px solid var(--control-border);
+        }
+        th.status-divider {
+          width: 24px;
+          padding: 0;
+          background: var(--divider-bg);
+          border-left: 1px solid var(--control-border);
+          border-right: 1px solid var(--control-border);
+        }
 
         .aligned-lines { display: block; overflow: hidden; }
         .aligned-line { display: block; white-space: pre-wrap; word-break: break-word; }
@@ -638,6 +932,8 @@ function App() {
         .meta-info { display: none; }
 
         @media (max-width: 980px) {
+          .upload-wrap { flex-direction: column; }
+          .side-actions { width: auto; flex: 1 1 auto; }
           .upload-grid { grid-template-columns: 1fr; }
           .diff-container { max-height: none; }
         }
@@ -646,115 +942,144 @@ function App() {
       <div className="header">
         <h1>
           <div className="header-logo">D</div>
-          DocComparison
+          文档对比
         </h1>
         <div className="toolbar">
           <button
             className="btn-secondary"
-            onClick={() => { setMode(mode === 'compare' ? 'config' : 'compare'); setError('') }}
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            title={theme === 'dark' ? '切换到亮色系' : '切换到暗色系'}
           >
-            {mode === 'compare' ? '配置规则' : '返回对比'}
+            {theme === 'dark' ? '☀️ 亮色' : '🌙 暗色'}
           </button>
-          {mode === 'compare' && (
-            <>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={aiEnabled}
-                  onChange={(e) => setAiEnabled(e.target.checked)}
-                />
-                <span>启用AI检查</span>
-              </label>
-              <input
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                style={{ height: 38, borderRadius: 12, border: '1px solid rgba(15,23,42,0.10)', padding: '0 10px', fontWeight: 650 }}
-              />
-              <button
-                className="btn-secondary"
-                onClick={runChecks}
-                disabled={checkLoading || rightBlocks.length === 0}
-              >
-                {checkLoading ? '检查中...' : (checkRun ? '重新检查' : '运行检查')}
-              </button>
-              {checkRun && (
-                <>
-                  <button
-                    className="btn-secondary"
-                    title="仅展示非 PASS 的检查项"
-                    onClick={() => setCheckFilter('issues')}
-                    disabled={checkFilter === 'issues'}
+          <button
+            className="btn-secondary"
+            onClick={() => { setConfigOpen(true); setError('') }}
+          >
+            ⚙ 配置规则
+          </button>
+        </div>
+      </div>
+      
+      {uploadPaneCollapsed ? (
+        <div className="upload-collapsed">
+          <div className="upload-collapsed-files">
+            <div><b>原始：</b>{leftFile?.name || '未选择'}</div>
+            <div><b>修订：</b>{rightFile?.name || '未选择'}</div>
+          </div>
+          <button className="icon-btn" title="展开上传区" onClick={() => setUploadPaneCollapsed(false)}>▾</button>
+        </div>
+      ) : (
+        <div className="upload-wrap">
+          <div className="upload-grid">
+            <FileUpload 
+              side="left" 
+              onFileSelect={(f) => { setLeftFile(f); parseFile(f, 'left'); }}
+              blocks={leftBlocks}
+              fileName={leftFile?.name || null}
+            />
+            <FileUpload 
+              side="right" 
+              onFileSelect={(f) => { setRightFile(f); parseFile(f, 'right'); }}
+              blocks={rightBlocks}
+              fileName={rightFile?.name || null}
+            />
+          </div>
+          <div className="side-actions">
+            <div className="side-actions-top">
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div>
+                  <div className="field-label">合同类型</div>
+                  <select
+                    className="select"
+                    value={templateId}
+                    onChange={(e) => setTemplateId(e.target.value)}
                   >
-                    只看问题
-                  </button>
-                  <button
-                    className="btn-secondary"
-                    title="展示全部检查项（含 PASS）"
-                    onClick={() => setCheckFilter('all')}
-                    disabled={checkFilter === 'all'}
-                  >
-                    全部
-                  </button>
-                </>
-              )}
-              <button
-                className="btn-secondary"
-                onClick={() => { setCheckPaneOpen(v => !v); if (checkPaneOpen) setCheckExpanded(false) }}
-              >
-                {checkPaneOpen ? '收起检查栏' : '展开检查栏'}
-              </button>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={showOnlyDiff}
-                  onChange={(e) => { setShowOnlyDiff(e.target.checked); setActiveDiffIndex(0) }}
-                />
-                <span>只看差异</span>
-              </label>
-              <button
-                className="btn-secondary"
-                onClick={() => jumpToDiff(activeDiffIndex - 1)}
-                disabled={diffOnlyRows.length === 0}
-              >
-                上一处差异
-              </button>
-              <button
-                className="btn-secondary"
-                onClick={() => jumpToDiff(activeDiffIndex + 1)}
-                disabled={diffOnlyRows.length === 0}
-              >
-                下一处差异
-              </button>
+                    {(rulesetOptions.some(o => o.templateId === templateId) ? rulesetOptions : [{ templateId, name: templateId }, ...rulesetOptions]).map(o => (
+                      <option key={o.templateId} value={o.templateId}>{o.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={aiEnabled}
+                    onChange={(e) => setAiEnabled(e.target.checked)}
+                  />
+                  <span className="switch-ui" aria-hidden="true" />
+                  <span className="switch-text">启用AI检查</span>
+                </label>
+              </div>
               <button 
                 className="btn-primary"
                 onClick={handleDiff} 
                 disabled={loading || leftBlocks.length === 0 || rightBlocks.length === 0}
+                style={{ height: 88, padding: '10px 18px' }}
               >
-                {loading ? 'Processing...' : 'Compare Documents'}
+                {loading ? '⏳ 对比中' : '⇄ 开始对比'}
               </button>
-            </>
-          )}
-        </div>
-      </div>
-      
-      {mode === 'compare' && (
-        <div className="upload-grid">
-          <FileUpload 
-            side="left" 
-            onFileSelect={(f) => { setLeftFile(f); parseFile(f, 'left'); }}
-            blocks={leftBlocks}
-            fileName={leftFile?.name || null}
-          />
-          <FileUpload 
-            side="right" 
-            onFileSelect={(f) => { setRightFile(f); parseFile(f, 'right'); }}
-            blocks={rightBlocks}
-            fileName={rightFile?.name || null}
-          />
+            </div>
+          </div>
         </div>
       )}
 
-      {mode === 'compare' && checkRun && diffRows.length === 0 && (
+      <div className="mid-actions">
+        <button
+          className="icon-btn"
+          title={attachmentPaneOpen ? '收起附件区' : '展开附件区'}
+          onClick={() => setAttachmentPaneOpen(v => !v)}
+        >
+          {attachmentPaneOpen ? '📎▾' : '📎▸'}
+        </button>
+        {attachmentPaneOpen && (
+          <>
+            <label className="switch" title="仅展示差异行">
+              <input
+                type="checkbox"
+                checked={showOnlyDiff}
+                onChange={(e) => { setShowOnlyDiff(e.target.checked); setActiveDiffIndex(0) }}
+              />
+              <span className="switch-ui" aria-hidden="true" />
+              <span className="switch-text">只看差异</span>
+            </label>
+            <button
+              className="btn-secondary"
+              onClick={() => jumpToDiff(activeDiffIndex - 1)}
+              disabled={diffOnlyRows.length === 0}
+              title="上一处差异"
+            >
+              ↑
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => jumpToDiff(activeDiffIndex + 1)}
+              disabled={diffOnlyRows.length === 0}
+              title="下一处差异"
+            >
+              ↓
+            </button>
+          </>
+        )}
+        <label className="switch" title="开启：只看问题；关闭：全部">
+          <input
+            type="checkbox"
+            checked={checkFilter === 'issues'}
+            onChange={(e) => setCheckFilter(e.target.checked ? 'issues' : 'all')}
+          />
+          <span className="switch-ui" aria-hidden="true" />
+          <span className="switch-text">{checkFilter === 'issues' ? '只看问题' : '全部'}</span>
+        </label>
+        <button
+          className="icon-btn"
+          title={checkPaneOpen ? '收起检查栏' : '展开检查栏'}
+          onClick={() => setCheckPaneOpen(v => !v)}
+          disabled={!checkRun}
+        >
+          {checkPaneOpen ? '🧾▾' : '🧾▸'}
+        </button>
+      </div>
+
+      {checkRun && checkPaneOpen && diffRows.length === 0 && (
         <div style={{ marginTop: 14 }}>
           {renderCheckPanel()}
         </div>
@@ -766,47 +1091,33 @@ function App() {
         </div>
       )}
 
-      {mode === 'compare' && diffRows.length > 0 && (
+      {diffRows.length > 0 && (
         <div className="diff-container">
           <table>
           <colgroup>
-            <col style={{ width: '42%' }} />
-            <col style={{ width: '40px' }} />
-            <col style={{ width: '42%' }} />
+            <col style={{ width: '48%' }} />
+            <col style={{ width: '24px' }} />
+            <col style={{ width: '48%' }} />
             {checkPaneOpen && <col style={{ width: '360px' }} />}
           </colgroup>
           <thead>
             <tr>
-              <th>Original Content</th>
-              <th></th>
-              <th>Modified Content</th>
+              <th style={{ textAlign: 'center' }}>原文内容</th>
+              <th className="status-divider"></th>
+              <th style={{ textAlign: 'center' }}>修订内容</th>
               {checkPaneOpen && (
                 <th>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     <div>检查结果</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {checkRun ? (
-                        <div style={{ fontSize: 11, color: 'rgba(15,23,42,0.55)' }}>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                           通过 {checkRun.summary?.counts?.pass ?? 0} · 不通过 {checkRun.summary?.counts?.fail ?? 0} · 警告 {checkRun.summary?.counts?.warn ?? 0} · 需人工 {checkRun.summary?.counts?.manual ?? 0}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 11, color: 'rgba(15,23,42,0.55)' }}>未运行检查</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>未运行检查</div>
                       )}
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '6px 10px', fontSize: 12 }}
-                        onClick={() => setCheckExpanded(v => !v)}
-                      >
-                        {checkExpanded ? '汇总' : '明细'}
-                      </button>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '6px 10px', fontSize: 12 }}
-                        onClick={() => { setCheckPaneOpen(false); setCheckExpanded(false) }}
-                      >
-                        收起栏
-                      </button>
-                      {checkLoading && <div style={{ fontSize: 11, color: 'rgba(15,23,42,0.55)' }}>检查中...</div>}
+                      {checkLoading && <div style={{ fontSize: 11, color: 'var(--muted)' }}>检查中...</div>}
                     </div>
                   </div>
                 </th>
@@ -873,68 +1184,38 @@ function App() {
                   </td>
 
                   {checkPaneOpen && (
-                    <td style={{ borderLeft: '1px solid rgba(15,23,42,0.06)', background: 'rgba(248,250,252,0.55)' }}>
+                    <td style={{ borderLeft: '1px solid var(--border)', background: 'rgba(255,255,255,0.04)' }}>
                       {checkRun ? (
-                        checkExpanded ? (
-                          rowVisibleCheckItems.length > 0 ? (
-                            <div style={{ display: 'grid', gap: 8 }}>
-                              {rowVisibleCheckItems.map(it => {
-                                const color = it.status === 'fail' ? 'rgba(185, 28, 28, 1)' : it.status === 'warn' ? 'rgba(146, 64, 14, 1)' : it.status === 'manual' ? 'rgba(30, 64, 175, 1)' : it.status === 'error' ? 'rgba(185, 28, 28, 1)' : 'rgba(15,23,42,0.70)'
-                                const tagBg = it.status === 'fail' ? 'rgba(239,68,68,0.10)' : it.status === 'warn' ? 'rgba(245,158,11,0.14)' : it.status === 'manual' ? 'rgba(37,99,235,0.10)' : it.status === 'error' ? 'rgba(239,68,68,0.10)' : 'rgba(15,23,42,0.06)'
-                                return (
-                                  <div key={it.pointId} style={{ border: '1px solid rgba(15,23,42,0.10)', borderRadius: 12, padding: 10, background: 'rgba(255,255,255,0.75)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                                      <div style={{ fontWeight: 750, lineHeight: 1.25 }}>{it.title}</div>
-                                      <div style={{ fontSize: 11, fontWeight: 800, color, background: tagBg, padding: '3px 8px', borderRadius: 999 }}>
-                                        {it.status.toUpperCase()}
-                                      </div>
+                        rowVisibleCheckItems.length > 0 ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            {rowVisibleCheckItems.map(it => {
+                              const color = it.status === 'fail' ? 'rgba(185, 28, 28, 1)' : it.status === 'warn' ? 'rgba(146, 64, 14, 1)' : it.status === 'manual' ? 'rgba(30, 64, 175, 1)' : it.status === 'error' ? 'rgba(185, 28, 28, 1)' : 'var(--text)'
+                              const tagBg = it.status === 'fail' ? 'rgba(239,68,68,0.10)' : it.status === 'warn' ? 'rgba(245,158,11,0.14)' : it.status === 'manual' ? 'rgba(37,99,235,0.10)' : it.status === 'error' ? 'rgba(239,68,68,0.10)' : 'var(--divider-bg)'
+                              return (
+                                <div key={it.pointId} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 10, background: 'rgba(255,255,255,0.06)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                                    <div style={{ fontWeight: 750, lineHeight: 1.25 }}>{it.title}</div>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color, background: tagBg, padding: '3px 8px', borderRadius: 999 }}>
+                                      {it.status.toUpperCase()}
                                     </div>
-                                    <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(15,23,42,0.80)' }}>{it.message}</div>
-                                    {it.ai?.summary && (
-                                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed rgba(15,23,42,0.12)', fontSize: 12, color: 'rgba(15,23,42,0.78)' }}>
-                                        AI：{it.ai.summary}
-                                      </div>
-                                    )}
                                   </div>
-                                )
-                              })}
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.55)' }}>
-                              {!row.rightBlockId ? '—' : rowAllCheckItems.length === 0 ? '无检查项' : checkFilter === 'issues' ? '通过' : '—'}
-                            </div>
-                          )
-                        ) : (
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                            {(() => {
-                              if (!row.rightBlockId) return <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.55)' }}>—</div>
-                              if (rowAllCheckItems.length === 0) return <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.55)' }}>无检查项</div>
-                              const fail = rowAllCheckItems.filter(it => it.status === 'fail').length
-                              const warn = rowAllCheckItems.filter(it => it.status === 'warn').length
-                              const manual = rowAllCheckItems.filter(it => it.status === 'manual').length
-                              const err = rowAllCheckItems.filter(it => it.status === 'error').length
-                              const skipped = rowAllCheckItems.filter(it => it.status === 'skipped').length
-                              const nonPass = rowAllCheckItems.filter(it => it.status !== 'pass').length
-
-                              const Badge = ({ text, fg, bg }: { text: string, fg: string, bg: string }) => (
-                                <span style={{ fontSize: 11, fontWeight: 800, color: fg, background: bg, padding: '3px 8px', borderRadius: 999, border: '1px solid rgba(15,23,42,0.08)' }}>
-                                  {text}
-                                </span>
+                                  <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text)' }}>{it.message}</div>
+                                  {it.ai?.summary && (
+                                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--control-border)', fontSize: 12, color: 'var(--muted)' }}>
+                                      AI：{it.ai.summary}
+                                    </div>
+                                  )}
+                                </div>
                               )
-
-                              const badges: React.ReactNode[] = []
-                              if (fail > 0) badges.push(<Badge key="fail" text={`不通过 ${fail}`} fg="rgba(185, 28, 28, 1)" bg="rgba(239,68,68,0.10)" />)
-                              if (warn > 0) badges.push(<Badge key="warn" text={`警告 ${warn}`} fg="rgba(146, 64, 14, 1)" bg="rgba(245,158,11,0.14)" />)
-                              if (manual > 0) badges.push(<Badge key="manual" text={`需人工 ${manual}`} fg="rgba(30, 64, 175, 1)" bg="rgba(37,99,235,0.10)" />)
-                              if (err > 0) badges.push(<Badge key="error" text={`错误 ${err}`} fg="rgba(185, 28, 28, 1)" bg="rgba(239,68,68,0.10)" />)
-                              if (skipped > 0 && badges.length === 0) badges.push(<Badge key="skipped" text={`跳过 ${skipped}`} fg="rgba(15,23,42,0.70)" bg="rgba(15,23,42,0.06)" />)
-                              if (badges.length === 0 && nonPass === 0) badges.push(<Badge key="pass" text="通过" fg="rgba(22, 101, 52, 1)" bg="rgba(34,197,94,0.12)" />)
-                              return badges
-                            })()}
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                            {!row.rightBlockId ? '—' : checkFilter === 'issues' ? '—' : '无检查项'}
                           </div>
                         )
                       ) : (
-                        <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.55)' }}>—</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>—</div>
                       )}
                     </td>
                   )}
@@ -946,16 +1227,32 @@ function App() {
         </div>
       )}
 
-      {mode === 'config' && (
-        <div style={{ display: 'grid', gap: 14 }}>
+      {configOpen && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setConfigOpen(false)
+          }}
+        >
+          <div className="modal" role="dialog" aria-modal="true">
+            <div className="modal-topbar">
+              <div className="modal-title">规则配置</div>
+              <button className="icon-btn" title="关闭" onClick={() => setConfigOpen(false)}>✕</button>
+            </div>
+            <div style={{ padding: 14, display: 'grid', gap: 14 }}>
           <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div style={{ fontWeight: 800 }}>规则配置</div>
-              <input
+              <select
+                className="select"
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
-                style={{ height: 38, borderRadius: 12, border: '1px solid rgba(15,23,42,0.10)', padding: '0 10px', fontWeight: 650 }}
-              />
+                style={{ width: 260 }}
+              >
+                {(rulesetOptions.some(o => o.templateId === templateId) ? rulesetOptions : [{ templateId, name: templateId }, ...rulesetOptions]).map(o => (
+                  <option key={o.templateId} value={o.templateId}>{o.name}</option>
+                ))}
+              </select>
               <button className="btn-secondary" onClick={loadRuleset} disabled={rulesetLoading}>{rulesetLoading ? '加载中...' : '加载规则集'}</button>
               <button className="btn-primary" onClick={saveRuleset} disabled={rulesetLoading || !rulesetJson.trim()}>{rulesetLoading ? '保存中...' : '保存规则集'}</button>
             </div>
@@ -964,7 +1261,7 @@ function App() {
                 value={rulesetJson}
                 onChange={(e) => setRulesetJson(e.target.value)}
                 placeholder="点击“加载规则集”，或直接粘贴/编辑 Ruleset JSON"
-                style={{ width: '100%', minHeight: 260, resize: 'vertical', borderRadius: 12, border: '1px solid rgba(15,23,42,0.10)', padding: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace', fontSize: 12, lineHeight: 1.5 }}
+                style={{ width: '100%', minHeight: 260, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace', fontSize: 12, lineHeight: 1.5 }}
               />
             </div>
           </div>
@@ -1001,10 +1298,10 @@ function App() {
             {templateBlocks.length > 0 && (
               <div style={{ marginTop: 12, display: 'grid', gap: 10, maxHeight: '60vh', overflow: 'auto', paddingRight: 2 }}>
                 {templateBlocks.map((b) => (
-                  <div key={b.blockId} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, border: '1px solid rgba(15,23,42,0.10)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.6)' }}>
+                  <div key={b.blockId} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.06)' }}>
                     <div>
                       <div style={{ fontWeight: 750, marginBottom: 6 }}>分块内容</div>
-                      <div style={{ fontSize: 12, color: 'rgba(15,23,42,0.78)', whiteSpace: 'pre-wrap' }}>{(b.text || '').slice(0, 260)}{(b.text || '').length > 260 ? '…' : ''}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{(b.text || '').slice(0, 260)}{(b.text || '').length > 260 ? '…' : ''}</div>
                       <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>{b.stableKey}</div>
                     </div>
                     <div>
@@ -1013,13 +1310,15 @@ function App() {
                         value={blockPrompts[b.stableKey] || ''}
                         onChange={(e) => setBlockPrompts((prev) => ({ ...prev, [b.stableKey]: e.target.value }))}
                         placeholder="例如：\n交货日期请填写，至少精确到月\n- 若为空或仅占位线：不通过\n- 输出：缺失位置与建议填写格式"
-                        style={{ width: '100%', minHeight: 110, resize: 'vertical', borderRadius: 10, border: '1px solid rgba(15,23,42,0.10)', padding: 10, fontSize: 12, lineHeight: 1.5 }}
+                        style={{ width: '100%', minHeight: 110, resize: 'vertical', borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 10, fontSize: 12, lineHeight: 1.5 }}
                       />
                     </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+            </div>
           </div>
         </div>
       )}
