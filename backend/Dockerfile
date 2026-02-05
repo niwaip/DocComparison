@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/python:3.11-slim
+FROM python:3.11-slim
 
 # Use Tsinghua Pip Mirror
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
