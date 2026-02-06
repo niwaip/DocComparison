@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import ContractRulesModal, { DetectedField, FieldRuleState } from './ContractRulesModal'
 
 // --- Interfaces ---
@@ -105,6 +105,8 @@ const decodeHtmlLite = (s: string) => {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
 }
+
+const TEMPLATE_MATCH_THRESHOLD = 0.84
 
 const normalizeFieldLabel = (raw: string) => {
   let s = (raw || '').trim()
@@ -523,6 +525,15 @@ function App() {
     }))
   }
 
+  const loadTemplateBlocksForCompare = async (tid: string) => {
+    const res = await fetch(`/api/templates/${encodeURIComponent(tid)}/latest`)
+    if (!res.ok) throw new Error(`加载标准模板失败：${res.statusText}`)
+    const snapshot = await res.json()
+    const blocks = snapshot && Array.isArray(snapshot.blocks) ? (snapshot.blocks as Block[]) : []
+    const name = typeof snapshot?.name === 'string' ? snapshot.name : ''
+    return { blocks, name }
+  }
+
   const parseFile = async (file: File, side: 'left' | 'right') => {
     setLoading(true)
     setError('')
@@ -554,12 +565,22 @@ function App() {
             const best = obj?.best || null
             const score = typeof best?.score === 'number' ? best.score : null
             const tid = typeof best?.templateId === 'string' ? best.templateId : ''
-            const THRESHOLD = 0.84
-            if (score !== null && tid && score >= THRESHOLD) setTemplateId(tid)
-            else setTemplateId('')
+            if (score !== null && tid && score >= TEMPLATE_MATCH_THRESHOLD) {
+              setTemplateId(tid)
+              if (leftBlocks.length === 0) {
+                const { blocks: tplBlocks, name } = await loadTemplateBlocksForCompare(tid)
+                setLeftBlocks(tplBlocks)
+                const label = (name || tid || '标准模板').trim()
+                setLeftFile(new File([], `标准模板-${label}.docx`, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
+              }
+            } else {
+              setTemplateId('')
+            }
+          } else {
+            setTemplateId('')
           }
         } catch {
-          void 0
+          setTemplateId('')
         }
       }
     } catch (err: any) {
@@ -570,47 +591,82 @@ function App() {
     }
   }
 
+  const runDiffCore = async (left: Block[], right: Block[], templateIdForCheck?: string) => {
+    const res = await fetch('/api/diff', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        left_blocks: left,
+        right_blocks: right
+      })
+    })
+
+    if (!res.ok) {
+      throw new Error(`对比失败：${res.statusText}`)
+    }
+
+    const rows: AlignmentRow[] = await res.json()
+    setDiffRows(rows)
+    setActiveDiffIndex(0)
+    setActiveRowId(null)
+    setCheckRun(null)
+    setCheckPaneOpen(false)
+    setUploadPaneCollapsed(true)
+    const effectiveTemplateId = (templateIdForCheck ?? templateId).trim()
+    const cr = effectiveTemplateId ? await runChecks(effectiveTemplateId, right) : null
+    if (aiAnalyzeEnabled) {
+      if (cr) {
+        await runGlobalAnalyze(rows, cr)
+      } else {
+        await runGlobalAnalyze(rows, null)
+      }
+    } else {
+      setGlobalAnalyzeRaw(null)
+    }
+  }
+
+  const compareUsingTemplate = async (tid: string) => {
+    if (!tid) return
+    if (rightBlocks.length === 0) {
+      setError('请先解析右侧文件。')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const { blocks, name } = await loadTemplateBlocksForCompare(tid)
+      setLeftBlocks(blocks)
+      const label = (name || tid || '标准模板').trim()
+      setLeftFile(new File([], `标准模板-${label}.docx`, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
+      await runDiffCore(blocks, rightBlocks, tid)
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleDiff = async () => {
-    if (leftBlocks.length === 0 || rightBlocks.length === 0) {
-      setError('请先解析左右两份文件。')
+    if (rightBlocks.length === 0) {
+      setError('请先解析右侧文件。')
+      return
+    }
+    if (leftBlocks.length === 0) {
+      if (templateId) {
+        await compareUsingTemplate(templateId)
+        return
+      }
+      setError('请先解析左侧文件，或先匹配/选择标准模板。')
       return
     }
 
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/diff', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          left_blocks: leftBlocks,
-          right_blocks: rightBlocks
-        })
-      })
-
-      if (!res.ok) {
-        throw new Error(`对比失败：${res.statusText}`)
-      }
-
-      const rows: AlignmentRow[] = await res.json()
-      setDiffRows(rows)
-      setActiveDiffIndex(0)
-      setActiveRowId(null)
-      setCheckRun(null)
-      setCheckPaneOpen(false)
-      setUploadPaneCollapsed(true)
-      const cr = templateId ? await runChecks() : null
-      if (aiAnalyzeEnabled) {
-        if (cr) {
-          await runGlobalAnalyze(rows, cr)
-        } else {
-          await runGlobalAnalyze(rows, null)
-        }
-      } else {
-        setGlobalAnalyzeRaw(null)
-      }
+      await runDiffCore(leftBlocks, rightBlocks, templateId)
     } catch (err: any) {
       console.error(err)
       setError(err.message)
@@ -720,8 +776,9 @@ function App() {
     scrollToRow(diffOnlyRows[i].rowId)
   }
 
-  const runChecks = async (): Promise<CheckRunResponse | null> => {
-    if (rightBlocks.length === 0) {
+  const runChecks = useCallback(async (tid: string, blocks: Block[]): Promise<CheckRunResponse | null> => {
+    if (!tid) return null
+    if (blocks.length === 0) {
       setError('请先解析右侧合同文件。')
       return null
     }
@@ -732,8 +789,8 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          templateId,
-          rightBlocks,
+          templateId: tid,
+          rightBlocks: blocks,
           aiEnabled: aiCheckEnabled
         })
       })
@@ -748,7 +805,7 @@ function App() {
     } finally {
       setCheckLoading(false)
     }
-  }
+  }, [aiCheckEnabled])
 
   const runGlobalAnalyze = async (rows: AlignmentRow[], cr: CheckRunResponse | null) => {
     if (!aiAnalyzeEnabled) return
@@ -1108,7 +1165,7 @@ function App() {
     }
   }
 
-  const loadGlobalPrompt = async () => {
+  const loadGlobalPrompt = useCallback(async () => {
     setGlobalPromptLoading(true)
     setError('')
     try {
@@ -1124,7 +1181,7 @@ function App() {
     } finally {
       setGlobalPromptLoading(false)
     }
-  }
+  }, [templateId])
 
   const saveGlobalPrompt = async () => {
     setGlobalPromptLoading(true)
@@ -1175,7 +1232,7 @@ function App() {
     }
     setGlobalPromptDefaultDraft(globalPromptCfg?.defaultPrompt || '')
     setGlobalPromptTemplateDraft(globalPromptCfg?.byTemplateId?.[templateId] || '')
-  }, [configOpen, templateId, globalPromptCfg])
+  }, [configOpen, templateId, globalPromptCfg, loadGlobalPrompt])
 
   const renderCheckPanel = () => {
     if (!checkRun) return null
@@ -1774,13 +1831,16 @@ function App() {
           display: inline-flex;
           position: relative;
           align-items: center;
-          gap: 10px;
-          padding: 8px 10px;
+          gap: 8px;
+          padding: 6px 8px;
           border: 1px solid var(--control-border);
           border-radius: 999px;
           background: var(--control-bg);
           user-select: none;
           cursor: pointer;
+          justify-self: start;
+          width: max-content;
+          max-width: 100%;
         }
         .switch input {
           position: absolute;
@@ -1790,8 +1850,8 @@ function App() {
           overflow: hidden;
         }
         .switch-ui {
-          width: 40px;
-          height: 22px;
+          width: 34px;
+          height: 18px;
           border-radius: 999px;
           background: var(--divider-bg);
           position: relative;
@@ -1801,17 +1861,17 @@ function App() {
         .switch-ui::after {
           content: '';
           position: absolute;
-          top: 3px;
-          left: 3px;
-          width: 16px;
-          height: 16px;
+          top: 2px;
+          left: 2px;
+          width: 14px;
+          height: 14px;
           border-radius: 999px;
           background: rgba(255,255,255,0.98);
           box-shadow: 0 6px 12px rgba(2, 6, 23, 0.12);
           transition: transform 0.12s ease;
         }
         .switch input:checked + .switch-ui { background: rgba(37,99,235,0.55); }
-        .switch input:checked + .switch-ui::after { transform: translateX(18px); }
+        .switch input:checked + .switch-ui::after { transform: translateX(16px); }
         .switch input:focus-visible + .switch-ui { box-shadow: 0 0 0 3px rgba(37,99,235,0.22); }
         .switch-text { font-size: 13px; font-weight: 650; color: var(--control-text); }
 
@@ -1907,40 +1967,97 @@ function App() {
         .upload-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 14px;
+          gap: 12px;
           margin: 0;
           flex: 1 1 auto;
         }
 
         .side-actions {
-          width: 320px;
-          flex: 0 0 320px;
+          width: 360px;
+          flex: 0 0 360px;
           background: var(--panel);
           border: 1px solid var(--border);
           border-radius: var(--radius);
-          padding: 14px;
+          padding: 12px;
           box-shadow: 0 6px 18px rgba(2, 6, 23, 0.06);
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 10px;
           justify-content: space-between;
         }
         .side-actions-top {
           display: grid;
           grid-template-columns: 1fr auto;
-          gap: 12px;
-          align-items: end;
+          gap: 10px;
+          align-items: start;
         }
         .field-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
         .select {
           width: 100%;
-          height: 38px;
+          height: 36px;
           border-radius: 12px;
           border: 1px solid var(--control-border);
           padding: 0 10px;
           font-weight: 650;
           background: var(--control-bg);
           color: var(--control-text);
+        }
+        .side-actions-controls{
+          display: grid;
+          gap: 10px;
+        }
+        .side-actions-switches{
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: nowrap;
+        }
+        .field-row{
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+        .field-row-label{
+          font-size: 12px;
+          font-weight: 800;
+          color: var(--muted);
+          white-space: nowrap;
+          flex: 0 0 auto;
+        }
+        .field-row .select{
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .side-actions-cta{
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-direction: column;
+          justify-content: flex-start;
+          align-self: stretch;
+        }
+        .side-actions-cta .btn-primary{
+          height: 44px;
+          padding: 0 16px;
+          width: 100%;
+          white-space: nowrap;
+        }
+        .side-actions-cta .btn-secondary{
+          height: 44px;
+          padding: 0 14px;
+          width: 100%;
+          white-space: nowrap;
+        }
+        .btn-reset{
+          border-color: rgba(239,68,68,0.26);
+        }
+        .btn-reset:hover{
+          background: rgba(239,68,68,0.10);
+          border-color: rgba(239,68,68,0.36);
+        }
+        .btn-reset:active{
+          background: rgba(239,68,68,0.14);
         }
         .side-actions-buttons {
           display: grid;
@@ -1950,10 +2067,10 @@ function App() {
           background: var(--panel);
           border: 1px solid var(--border);
           border-radius: var(--radius);
-          padding: 16px;
+          padding: 14px;
           display: flex;
           align-items: center;
-          gap: 14px;
+          gap: 12px;
           cursor: pointer;
           transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
           box-shadow: 0 6px 18px rgba(2, 6, 23, 0.06);
@@ -2047,9 +2164,8 @@ function App() {
           overflow-wrap: anywhere;
           overflow-x: hidden;
         }
-        .block-content p[style*="text-indent"], .block-content p[style*="padding-left"]{
+        .block-content p[style*="text-indent:"]:not([style*="text-indent: -"]){
           text-indent: 0 !important;
-          padding-left: 0 !important;
         }
         .block-content p { margin: 0 0 8px 0; }
         .block-content p:last-child { margin-bottom: 0; }
@@ -2198,9 +2314,9 @@ function App() {
           </div>
           <div className="side-actions">
             <div className="side-actions-top">
-              <div style={{ display: 'grid', gap: 12 }}>
-                <div>
-                  <div className="field-label">合同类型</div>
+              <div className="side-actions-controls">
+                <div className="field-row">
+                  <div className="field-row-label">合同类型</div>
                   <select
                     className="select"
                     value={templateId}
@@ -2211,28 +2327,29 @@ function App() {
                     ))}
                   </select>
                 </div>
-                <label className="switch">
-                  <input type="checkbox" checked={aiCheckEnabled} onChange={(e) => setAiCheckEnabled(e.target.checked)} disabled={!templateId} />
-                  <span className="switch-ui" aria-hidden="true" />
-                  <span className="switch-text">AI检查</span>
-                </label>
-                <label className="switch">
-                  <input type="checkbox" checked={aiAnalyzeEnabled} onChange={(e) => setAiAnalyzeEnabled(e.target.checked)} />
-                  <span className="switch-ui" aria-hidden="true" />
-                  <span className="switch-text">AI分析</span>
-                </label>
+                <div className="side-actions-switches">
+                  <label className="switch">
+                    <input type="checkbox" checked={aiCheckEnabled} onChange={(e) => setAiCheckEnabled(e.target.checked)} disabled={!templateId} />
+                    <span className="switch-ui" aria-hidden="true" />
+                    <span className="switch-text">AI检查</span>
+                  </label>
+                  <label className="switch">
+                    <input type="checkbox" checked={aiAnalyzeEnabled} onChange={(e) => setAiAnalyzeEnabled(e.target.checked)} />
+                    <span className="switch-ui" aria-hidden="true" />
+                    <span className="switch-text">AI分析</span>
+                  </label>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+              <div className="side-actions-cta">
                 <button 
-                  className="btn-primary"
+                  className="btn-primary btn-compare"
                   onClick={handleDiff} 
-                  disabled={loading || leftBlocks.length === 0 || rightBlocks.length === 0}
-                  style={{ height: 88, padding: '10px 18px', flex: 1 }}
+                  disabled={loading || rightBlocks.length === 0 || (leftBlocks.length === 0 && !templateId)}
                 >
                   {loading ? '⏳ 对比中' : '⇄ 开始对比'}
                 </button>
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary btn-reset"
                   onClick={() => {
                     setLeftFile(null)
                     setRightFile(null)
@@ -2254,10 +2371,9 @@ function App() {
                     setAiCheckEnabled(false)
                   }}
                   disabled={loading && !uploadPaneCollapsed}
-                  style={{ height: 88, padding: '10px 14px', whiteSpace: 'nowrap' }}
                   title="清空已上传文件与对比结果"
                 >
-                  重置
+                  ↺ 重置
                 </button>
               </div>
             </div>
@@ -2273,7 +2389,7 @@ function App() {
             onChange={(e) => { setShowOnlyDiff(e.target.checked); setActiveDiffIndex(0) }}
           />
           <span className="switch-ui" aria-hidden="true" />
-          <span className="switch-text">只看差异</span>
+          <span className="switch-text">显示差异</span>
         </label>
         <button
           className="btn-secondary"
@@ -2291,6 +2407,14 @@ function App() {
         >
           ↓
         </button>
+        <button
+          className="icon-btn"
+          title={checkPaneOpen ? '收起检查栏' : '展开检查栏'}
+          onClick={() => setCheckPaneOpen(v => !v)}
+          disabled={!checkRun}
+        >
+          {checkPaneOpen ? '🧾▾' : '🧾▸'}
+        </button>
         <label className="switch" title="开启：只看问题；关闭：全部">
           <input
             type="checkbox"
@@ -2300,14 +2424,6 @@ function App() {
           <span className="switch-ui" aria-hidden="true" />
           <span className="switch-text">{checkFilter === 'issues' ? '只看问题' : '全部'}</span>
         </label>
-        <button
-          className="icon-btn"
-          title={checkPaneOpen ? '收起检查栏' : '展开检查栏'}
-          onClick={() => setCheckPaneOpen(v => !v)}
-          disabled={!checkRun}
-        >
-          {checkPaneOpen ? '🧾▾' : '🧾▸'}
-        </button>
         <button
           className="icon-btn"
           title={globalPaneOpen ? '收起全局建议' : '展开全局建议'}
