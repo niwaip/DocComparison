@@ -110,3 +110,28 @@ Please provide a detailed risk analysis with citations."""
         except Exception:
             confidence_f = None
         return CheckAiResult(status=status, summary=summary, confidence=confidence_f, raw=content2)
+
+    def global_review(self, payload: Dict[str, Any], prompt: str) -> str:
+        if not settings.OPENAI_API_KEY:
+            return "AI skipped: OPENAI_API_KEY not configured"
+
+        system_prompt = (
+            "You are a contract review assistant. "
+            "Return ONLY a single JSON object with keys: "
+            "overallRiskLevel (low|medium|high), summary (string), "
+            "keyFindings (array of {title, detail, evidenceIds}), "
+            "improvementSuggestions (array of {title, detail, priority}), "
+            "missingInformation (array of strings), confidence (0-1). "
+            "Do not include any extra text."
+        )
+
+        user_payload = {"prompt": prompt, "input": payload}
+        response = self.client.chat.completions.create(
+            model="deepseek-ai/DeepSeek-V2.5",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+            ],
+            temperature=0,
+        )
+        return (response.choices[0].message.content or "").strip()

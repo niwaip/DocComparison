@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+ARG PYTHON_IMAGE=python:3.11-slim
+FROM ${PYTHON_IMAGE}
 
 # Use Tsinghua Pip Mirror
 RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple

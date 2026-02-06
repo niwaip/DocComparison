@@ -60,18 +60,51 @@ def _is_placeholder_text(val: str) -> bool:
     return False
 
 
+def _strip_party_aliases(val: str) -> str:
+    s = val or ""
+    s = re.sub(r"[（(]\s*(?:下称|以下简称|简称)\s*[甲乙丙丁]方?\s*[）)]", "", s)
+    s = re.sub(r"[（(]\s*(?:下称|以下简称|简称)\s*[A-Z]\s*[）)]", "", s, flags=re.IGNORECASE)
+    return s
+
+
+def _looks_like_next_label(val: str) -> bool:
+    s = (val or "").strip()
+    if not s:
+        return False
+    parts = re.split(r"[:：]", s, maxsplit=1)
+    if len(parts) < 2:
+        return False
+    head = re.sub(r"\s+", "", parts[0])
+    if not (1 <= len(head) <= 10):
+        return False
+    if re.search(r"\d", head):
+        return False
+    if head in {"买方", "卖方", "甲方", "乙方"}:
+        return True
+    if head.endswith(("方", "日期", "地点", "编号", "名称", "地址", "电话", "传真", "邮箱", "邮编")):
+        return True
+    return False
+
+
 def _value_after_label(text: str, label_regex: Optional[str]) -> Optional[str]:
     t = text or ""
+    lines = t.splitlines() or [t]
     if label_regex:
-        m = re.search(rf"({label_regex})\s*[:：]\s*(.*)$", t)
-        if m:
-            return (m.group(2) or "").strip()
-    idx = t.find("：")
-    if idx >= 0:
-        return t[idx + 1 :].strip()
-    idx = t.find(":")
-    if idx >= 0:
-        return t[idx + 1 :].strip()
+        for line in lines:
+            try:
+                m = re.search(rf"(?:{label_regex})\s*[:：]\s*(.*)$", line)
+            except re.error:
+                m = re.search(rf"(?:{re.escape(label_regex)})\s*[:：]\s*(.*)$", line)
+            if m:
+                return (m.group(1) or "").strip()
+        return None
+    for line in lines:
+        idx = line.find("：")
+        if idx >= 0:
+            return line[idx + 1 :].strip()
+        idx = line.find(":")
+        if idx >= 0:
+            return line[idx + 1 :].strip()
     return None
 
 
@@ -79,6 +112,11 @@ def _find_block(blocks: List[Block], anchor_type: str, anchor_value: str) -> Opt
     if anchor_type == "stableKey":
         for b in blocks:
             if b.stableKey == anchor_value:
+                return b
+        return None
+    if anchor_type == "structurePath":
+        for b in blocks:
+            if b.structurePath == anchor_value:
                 return b
         return None
     if anchor_type == "textRegex":
@@ -125,7 +163,10 @@ def _eval_required_after_colon(rule: CheckRule, block: Block) -> Tuple[CheckStat
         if _has_underline_placeholder(block.htmlFragment or ""):
             return CheckStatus.FAIL, "字段为空（占位线/下划线未填写）"
         return CheckStatus.WARN, "未能定位“：”后的字段值，建议人工复核"
-    if _is_placeholder_text(val) or _has_underline_placeholder(block.htmlFragment or ""):
+    cleaned = _strip_party_aliases(val)
+    if _looks_like_next_label(cleaned):
+        cleaned = ""
+    if _is_placeholder_text(cleaned) or _has_underline_placeholder(block.htmlFragment or ""):
         return CheckStatus.FAIL, "字段为空（占位线/下划线未填写）"
     return CheckStatus.PASS, "已填写"
 
@@ -144,10 +185,45 @@ def _eval_date_month(_: CheckRule, block: Block) -> Tuple[CheckStatus, str]:
     return CheckStatus.FAIL, "未识别到有效日期（至少到月）"
 
 
+def _eval_date_format(_: CheckRule, block: Block) -> Tuple[CheckStatus, str]:
+    if _has_underline_placeholder(block.htmlFragment or ""):
+        return CheckStatus.FAIL, "日期为空（占位线/下划线未填写）"
+
+    t = block.text or ""
+    m = re.search(r"(\d{4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})", t)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            datetime(y, mo, d)
+            return CheckStatus.PASS, "日期格式合法（年-月-日）"
+        except Exception:
+            return CheckStatus.FAIL, "日期格式不合法（年-月-日）"
+
+    m = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)", t)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            datetime(y, mo, d)
+            return CheckStatus.PASS, "日期格式合法（年-月-日）"
+        except Exception:
+            return CheckStatus.FAIL, "日期格式不合法（年-月-日）"
+
+    m = re.search(r"(\d{4})\s*[年/\-\.]\s*(\d{1,2})\s*(?:月)?", t)
+    if m:
+        mo = int(m.group(2))
+        if 1 <= mo <= 12:
+            return CheckStatus.PASS, "日期格式合法（年-月）"
+        return CheckStatus.FAIL, "日期格式不合法（月份范围错误）"
+
+    if _normalize_ws(t):
+        return CheckStatus.FAIL, "未识别到日期格式"
+    return CheckStatus.FAIL, "日期为空"
+
 def _eval_company_suffix(rule: CheckRule, block: Block) -> Tuple[CheckStatus, str]:
     label_regex = rule.params.get("labelRegex")
     val = _value_after_label(block.text or "", label_regex) or ""
-    val2 = re.sub(r"\s+", "", val)
+    val2 = _strip_party_aliases(val)
+    val2 = re.sub(r"\s+", "", val2)
     val2 = val2.strip("，,。；;：:()（）")
     if not val2 or _is_placeholder_text(val2) or _has_underline_placeholder(block.htmlFragment or ""):
         return CheckStatus.FAIL, "名称未填写"
@@ -283,6 +359,7 @@ def _eval_table_sales_items(_: CheckRule, block: Block) -> Tuple[CheckStatus, st
 RULE_EVAL: Dict[RuleType, Any] = {
     RuleType.REQUIRED_AFTER_COLON: _eval_required_after_colon,
     RuleType.DATE_MONTH: _eval_date_month,
+    RuleType.DATE_FORMAT: _eval_date_format,
     RuleType.COMPANY_SUFFIX: _eval_company_suffix,
     RuleType.OPTION_SELECTED: _eval_option_selected,
     RuleType.NUMBER_MAX: _eval_number_max,

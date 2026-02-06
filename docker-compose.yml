@@ -9,6 +9,8 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        PYTHON_IMAGE: docker.m.daocloud.io/library/python:3.11-slim
     ports:
       - "8000:8000"
     environment:

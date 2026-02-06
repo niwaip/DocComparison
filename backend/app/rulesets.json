@@ -3,156 +3,300 @@
     {
       "templateId": "sales_contract_cn",
       "name": "买卖合同（销售）",
-      "version": "2026-02-05",
-      "referenceData": {
-        "bankAccounts": []
-      },
+      "version": "2026-02-06",
+      "referenceData": {},
       "points": [
         {
-          "pointId": "sales.sign_date_month",
-          "title": "签订日期填写，至少精确到月",
+          "pointId": "field.afcab702",
+          "title": "签订日期 日期校验",
           "severity": "high",
-          "anchor": { "type": "textRegex", "value": "签订日期" },
-          "rules": [{ "type": "dateMonth", "params": {} }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查合同签订日期是否已填写，且至少精确到月份（例如 2026-02 或 2026年2月）。若仅有年份或为空，判定为不通过，并给出建议填写示例。"
-          }
+          "anchor": {
+            "type": "textRegex",
+            "value": "签订日期"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "签订日期"
+              }
+            },
+            {
+              "type": "dateMonth",
+              "params": {
+                "labelRegex": "签订日期"
+              }
+            },
+            {
+              "type": "dateFormat",
+              "params": {
+                "labelRegex": "签订日期"
+              }
+            }
+          ],
+          "ai": null
         },
         {
-          "pointId": "sales.buyer_full_name_company_suffix",
-          "title": "买方的名称应完整填写，应有“公司”后缀",
+          "pointId": "field.aff03a20",
+          "title": "签订地点 请填写",
           "severity": "high",
-          "anchor": { "type": "textRegex", "value": "买方" },
-          "rules": [{ "type": "companySuffix", "params": { "labelRegex": "买方" } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查买方名称是否完整填写，并以“公司”结尾；如不满足，指出当前文本并给出修订建议。"
-          }
+          "anchor": {
+            "type": "textRegex",
+            "value": "签订地点"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "签订地点"
+              }
+            }
+          ],
+          "ai": null
         },
         {
-          "pointId": "sales.section1_table_required_fields",
-          "title": "一/各项项目填写完整，产品名称/单价/数量/总价/合计金额必须填写且计算正确，大小写一致",
+          "pointId": "field.28ba2c87",
+          "title": "合同编号 请填写",
           "severity": "high",
-          "anchor": { "type": "tableContains", "value": "产品名称" },
-          "rules": [{ "type": "tableSalesItems", "params": {} }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第一部分表格中“产品名称、单价、数量、总价、合计金额”等是否填写完整；若能识别数值，检查单价×数量=总价，且合计金额大小写一致；无法确定处列为需人工复核并说明原因。"
-          }
+          "anchor": {
+            "type": "textRegex",
+            "value": "合同编号"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "合同编号"
+              }
+            }
+          ],
+          "ai": null
         },
         {
-          "pointId": "sales.section2_1_option_selected",
-          "title": "二/1中的选项请选择",
+          "pointId": "field.1f6e7db9",
+          "title": "买方 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "买方"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "买方"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "field.208a1119",
+          "title": "卖方 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "卖方"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "卖方"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "table.0a2dc74d",
+          "title": "表格检查",
           "severity": "medium",
-          "anchor": { "type": "textRegex", "value": "二\\s*/\\s*1|二\\s*\\.\\s*1|二\\s*、\\s*1" },
-          "rules": [{ "type": "optionSelected", "params": {} }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第二部分第1项是否存在选项并已明确选择（例如勾选/打勾/填入选项内容）；若未选择判定不通过。"
-          }
+          "anchor": {
+            "type": "structurePath",
+            "value": "body.ol[0].li[0]"
+          },
+          "rules": [
+            {
+              "type": "tableSalesItems",
+              "params": {}
+            }
+          ],
+          "ai": null
         },
         {
-          "pointId": "sales.section2_3_delivery_place",
-          "title": "二/3中的交货地点请填写",
+          "pointId": "field.de8a4b95",
+          "title": "交货地点 请填写",
           "severity": "high",
-          "anchor": { "type": "textRegex", "value": "交货地点" },
-          "rules": [{ "type": "requiredAfterColon", "params": { "labelRegex": "交货地点" } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查交货地点是否已填写；若为空或仅占位线/下划线，判定不通过并建议填写具体地点。"
-          }
+          "anchor": {
+            "type": "textRegex",
+            "value": "交货地点"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "交货地点"
+              }
+            }
+          ],
+          "ai": null
         },
         {
-          "pointId": "sales.section2_4_delivery_date_month",
-          "title": "二/4中的交货日期请填写，至少精确到月",
+          "pointId": "field.e40edd68",
+          "title": "交货日期 日期校验",
           "severity": "high",
-          "anchor": { "type": "textRegex", "value": "交货日期" },
-          "rules": [{ "type": "dateMonth", "params": {} }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查交货日期是否已填写且至少精确到月；如不满足，给出建议填写格式。"
-          }
+          "anchor": {
+            "type": "textRegex",
+            "value": "交货日期"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "交货日期"
+              }
+            },
+            {
+              "type": "dateMonth",
+              "params": {
+                "labelRegex": "交货日期"
+              }
+            },
+            {
+              "type": "dateFormat",
+              "params": {
+                "labelRegex": "交货日期"
+              }
+            }
+          ],
+          "ai": null
         },
         {
-          "pointId": "sales.section2_5_end_user_company_suffix",
-          "title": "二/5中最终用户的名称应完整填写，应有“公司”后缀",
+          "pointId": "field.d74e5fca",
+          "title": "最终用户 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "最终用户"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "最终用户"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "field.31b8c1a0",
+          "title": "运输方式 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "运输方式"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "运输方式"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "field.9d55e1ea",
+          "title": "乙方指定银行帐号为 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "乙方指定银行帐号为"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "乙方指定银行帐号为"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "field.7878bc72",
+          "title": "其他 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "其他"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "其他"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "field.b1805df6",
+          "title": "2． 甲方应在收到本合同项下产品___日内对此产品进行验收。 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "甲方应在收到本合同项下产品"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "2． 甲方应在收到本合同项下产品___日内对此产品进行验收。"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "field.1d21defd",
+          "title": "1． 保修期：自甲方收到本合同项下产品之日起___年内。 请填写",
+          "severity": "high",
+          "anchor": {
+            "type": "textRegex",
+            "value": "保修期"
+          },
+          "rules": [
+            {
+              "type": "requiredAfterColon",
+              "params": {
+                "labelRegex": "1． 保修期：自甲方收到本合同项下产品之日起___年内。"
+              }
+            }
+          ],
+          "ai": null
+        },
+        {
+          "pointId": "table.4fe6a7d9",
+          "title": "表格检查",
           "severity": "medium",
-          "anchor": { "type": "textRegex", "value": "最终用户" },
-          "rules": [{ "type": "companySuffix", "params": { "labelRegex": "最终用户" } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查最终用户名称是否完整填写并以“公司”结尾；如不满足，指出问题并给出修订建议。"
-          }
-        },
-        {
-          "pointId": "sales.section3_1_amount_currency_consistency",
-          "title": "三/1中期限及金额应完整填写并包含货币单位，大小写应一致",
-          "severity": "high",
-          "anchor": { "type": "textRegex", "value": "三\\s*/\\s*1|三\\s*\\.\\s*1|付款|期限" },
-          "rules": [{ "type": "fillOrStrike", "params": { "mustContainCurrency": true } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第三部分第1项的期限与金额是否填写完整并包含货币单位（如人民币/元/CNY），且金额大小写一致；无法自动判断的内容列为需人工复核。"
-          }
-        },
-        {
-          "pointId": "sales.section3_2_amount_currency_consistency",
-          "title": "三/2中期限及金额应完整填写并包含货币单位，大小写应一致",
-          "severity": "high",
-          "anchor": { "type": "textRegex", "value": "三\\s*/\\s*2|三\\s*\\.\\s*2|付款|期限" },
-          "rules": [{ "type": "fillOrStrike", "params": { "mustContainCurrency": true } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第三部分第2项的期限与金额是否填写完整并包含货币单位，且金额大小写一致；无法自动判断的内容列为需人工复核。"
-          }
-        },
-        {
-          "pointId": "sales.section3_3_bank_account_match",
-          "title": "三/3中的银行账号和公司财务部公布的信息一致",
-          "severity": "high",
-          "anchor": { "type": "textRegex", "value": "银行账号|开户行|账号" },
-          "rules": [{ "type": "bankAccountInList", "params": { "referenceKey": "bankAccounts" } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "从合同中提取银行账号并与已配置的财务账号列表对比；如列表为空或无法提取，提示需人工复核。"
-          }
-        },
-        {
-          "pointId": "sales.section4_2_term_days_max_30",
-          "title": "四/2中的期限请填写，一般不大于30",
-          "severity": "medium",
-          "anchor": { "type": "textRegex", "value": "四\\s*/\\s*2|四\\s*\\.\\s*2|期限" },
-          "rules": [{ "type": "numberMax", "params": { "max": 30 } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第四部分第2项期限是否填写且不大于30（通常指天数）；若超过或为空，判定不通过并提示建议。"
-          }
-        },
-        {
-          "pointId": "sales.section9_1_fill_or_strike",
-          "title": "九/1中的期限或填写，或划去，不应空白",
-          "severity": "medium",
-          "anchor": { "type": "textRegex", "value": "九\\s*/\\s*1|九\\s*\\.\\s*1|期限" },
-          "rules": [{ "type": "fillOrStrike", "params": {} }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第九部分第1项期限是否已填写，或已明确划去/标记为不适用；若空白判定不通过。"
-          }
-        },
-        {
-          "pointId": "sales.section16_3_copies_filled",
-          "title": "十六/3中的份数请填写",
-          "severity": "low",
-          "anchor": { "type": "textRegex", "value": "十六\\s*/\\s*3|十六\\s*\\.\\s*3|份数" },
-          "rules": [{ "type": "requiredAfterColon", "params": { "labelRegex": "份数" } }],
-          "ai": {
-            "policy": "optional",
-            "prompt": "检查第十六部分第3项“份数”是否已填写；若为空或仅占位线判定不通过。"
-          }
+          "anchor": {
+            "type": "structurePath",
+            "value": "body.ol[0].li[15]"
+          },
+          "rules": [
+            {
+              "type": "tableSalesItems",
+              "params": {}
+            }
+          ],
+          "ai": null
         }
       ]
     }
   ]
 }
-

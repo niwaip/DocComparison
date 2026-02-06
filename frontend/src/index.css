@@ -1,1 +1,23 @@
 body { margin: 0; font-family: system-ui; }
+
+.modal table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  max-width: 100%;
+}
+
+.modal th,
+.modal td {
+  border: 1px solid var(--control-border);
+  padding: 6px 8px;
+  vertical-align: top;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.modal img {
+  max-width: 100%;
+  height: auto;
+}

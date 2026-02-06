@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import ContractRulesModal, { DetectedField, FieldRuleState } from './ContractRulesModal'
 
 // --- Interfaces ---
 
@@ -57,6 +58,309 @@ interface CheckRunResponse {
   items: CheckResultItem[]
 }
 
+interface TemplateListItem {
+  templateId: string
+  name: string
+  versions: string[]
+}
+
+interface TemplateMatchItem {
+  templateId: string
+  name: string
+  version: string
+  score: number
+}
+
+interface TemplateMatchResponse {
+  best?: TemplateMatchItem | null
+  candidates: TemplateMatchItem[]
+}
+
+interface GlobalPromptConfig {
+  defaultPrompt: string
+  byTemplateId: Record<string, string>
+}
+
+interface GlobalAnalyzeResponse {
+  raw: string
+}
+
+const hashString = (input: string) => {
+  let h = 5381
+  for (let i = 0; i < input.length; i++) {
+    h = ((h << 5) + h) ^ input.charCodeAt(i)
+  }
+  const n = h >>> 0
+  return n.toString(16).padStart(8, '0')
+}
+
+const escapeRegex = (s: string) => (s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const decodeHtmlLite = (s: string) => {
+  return (s || '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+const normalizeFieldLabel = (raw: string) => {
+  let s = (raw || '').trim()
+  s = s.replace(/^\s*\d+\s*[.．、]?\s*/g, '')
+  s = s.replace(/^\s*[一二三四五六七八九十]+\s*[、.．]\s*/g, '')
+  const idx1 = s.indexOf('：')
+  const idx2 = s.indexOf(':')
+  const idx = idx1 >= 0 ? idx1 : idx2
+  if (idx >= 0) s = s.slice(0, idx)
+  s = s.trim().replace(/\s+/g, ' ')
+  return s
+}
+
+const detectFieldsFromBlock = (b: Block): DetectedField[] => {
+  const sp = b.structurePath
+  if (!sp) return []
+  const out: DetectedField[] = []
+
+  const html = b.htmlFragment || ''
+  const looksTableByText = () => {
+    const t = b.text || ''
+    if (!t) return false
+    const lines = t
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean)
+    if (lines.length < 2) return false
+    const headerLike = lines.find((x) => /产品名称|型号|数量|单价|总价|合计金额/.test(x))
+    if (!headerLike) return false
+    const cols = headerLike.split(/\t+|\s{2,}/).map((x) => x.trim()).filter(Boolean)
+    return cols.length >= 3
+  }
+
+  const isTableLike = b.kind === 'table' || /table/i.test(b.kind || '') || /<(table|tr|td)[\s>]/i.test(html) || looksTableByText()
+  if (isTableLike) {
+    const fieldId = `table::${sp}`
+    out.push({ fieldId, structurePath: sp, kind: 'table', label: '表格', labelRegex: '' })
+    return out
+  }
+
+  const orderedLabels: string[] = []
+  const labelSeen = new Set<string>()
+  const addLabel = (lab: string) => {
+    const s = (lab || '').trim().replace(/\s+/g, ' ')
+    if (!s) return
+    if (labelSeen.has(s)) return
+    labelSeen.add(s)
+    orderedLabels.push(s)
+  }
+
+  const underlineSentenceShortLabels = new Set<string>()
+  const knownLabels = new Set<string>(['运输方式', '交货地点', '交货日期', '最终用户', '签订日期', '签订地点', '合同编号', '买方', '卖方'])
+  const isProbablyHeadingLabel = (lab: string) => {
+    if (!lab) return true
+    if (knownLabels.has(lab)) return false
+    if (/附件/.test(lab)) return true
+    if (/[、，,]/.test(lab) && /(及|以及|和)/.test(lab)) return true
+    if (/(条|章节|部分|目录|说明|定义)/.test(lab) && lab.length >= 4) return true
+    return false
+  }
+
+  const stripTags = (s: string) => decodeHtmlLite((s || '').replace(/<[^>]+>/g, ''))
+  const isUnderlinePlaceholder = (inner: string) => {
+    const t = stripTags(inner).replace(/\s+/g, '')
+    if (!t) return true
+    return /^[_＿—－-]{2,}$/.test(t)
+  }
+  const addSentenceLabel = (beforeText: string, afterText: string) => {
+    const b = (beforeText || '').replace(/\s+/g, ' ').trim()
+    const a = (afterText || '').replace(/\s+/g, ' ').trim()
+    const aCore = a.replace(/[，,。.;；:：\s]/g, '')
+    if (!aCore) {
+      const lab = normalizeFieldLabel(b)
+      if (lab && !isProbablyHeadingLabel(lab)) addLabel(lab)
+      return
+    }
+    const sentence = `${b}___${a}`.replace(/\s+/g, ' ').trim()
+    if (!sentence) return
+    const shortLab = normalizeFieldLabel(b)
+    if (shortLab && shortLab.length <= 12 && !isProbablyHeadingLabel(shortLab)) underlineSentenceShortLabels.add(shortLab)
+    const idx = sentence.indexOf('___')
+    if (idx >= 0) {
+      const markers: number[] = []
+      const re = /(^|[\s：:。；;])(\d{1,2})\s*[.．、]/g
+      for (const m of sentence.matchAll(re)) {
+        const i = (m.index ?? 0) + (m[1] ? m[1].length : 0)
+        markers.push(i)
+      }
+      if (markers.length > 0) {
+        let start = 0
+        for (const i of markers) {
+          if (i <= idx) start = i
+          else break
+        }
+        let end = sentence.length
+        for (const i of markers) {
+          if (i > idx) {
+            end = i
+            break
+          }
+        }
+        const seg = sentence.slice(start, end).trim()
+        if (seg && seg.length <= 160) {
+          addLabel(seg)
+          return
+        }
+      }
+    }
+    if (sentence.length > 160) return
+    addLabel(sentence)
+  }
+  const spanUnderlineRe = /<p[^>]*>([\s\S]*?)<span[^>]*text-decoration\s*:\s*underline[^>]*>([\s\S]*?)<\/span>([\s\S]*?)<\/p>/gi
+  for (const m of html.matchAll(spanUnderlineRe)) {
+    const beforeText = stripTags(m[1] || '')
+    const underlineInner = m[2] || ''
+    const afterText = stripTags(m[3] || '')
+    if (!isUnderlinePlaceholder(underlineInner)) continue
+    if (afterText.trim()) {
+      addSentenceLabel(beforeText, afterText)
+      continue
+    }
+    const lab = normalizeFieldLabel(beforeText)
+    if (lab && !isProbablyHeadingLabel(lab)) addLabel(lab)
+  }
+  const uUnderlineRe = /<p[^>]*>([\s\S]*?)<u[^>]*>([\s\S]*?)<\/u>([\s\S]*?)<\/p>/gi
+  for (const m of html.matchAll(uUnderlineRe)) {
+    const beforeText = stripTags(m[1] || '')
+    const underlineInner = m[2] || ''
+    const afterText = stripTags(m[3] || '')
+    if (!isUnderlinePlaceholder(underlineInner)) continue
+    if (afterText.trim()) {
+      addSentenceLabel(beforeText, afterText)
+      continue
+    }
+    const lab = normalizeFieldLabel(beforeText)
+    if (lab && !isProbablyHeadingLabel(lab)) addLabel(lab)
+  }
+
+  const lines = (b.text || '').split('\n')
+  const isSectionHeadingLine = (line: string) => {
+    const s = (line || '').trim()
+    if (!s) return false
+    if (/^\s*[一二三四五六七八九十]+\s*[、，,．.。]/.test(s)) return true
+    if (/^\s*第[一二三四五六七八九十]+\s*[条章节]/.test(s)) return true
+    if (/^\s*[（(]?[一二三四五六七八九十]+[)）]/.test(s)) return true
+    return false
+  }
+  const isNumberedTitleWithColonOnly = (line: string) => {
+    const s = (line || '').trim()
+    if (!s) return false
+    return /^\s*(?:[一二三四五六七八九十]+\s*[、.．]|第[一二三四五六七八九十]+\s*[条章节]|[（(]?[一二三四五六七八九十]+[)）]|\d+\s*[.．、])\s*[^:：]{1,30}[:：]\s*$/.test(s)
+  }
+
+  for (const line of lines) {
+    const raw = (line || '').trim()
+    if (!raw) continue
+    if (!/[:：]/.test(raw)) continue
+    if (isSectionHeadingLine(raw)) continue
+    const m = raw.match(/^\s*(?:\d+\s*[.．、]\s*)?(.{1,40}?)([:：])(.*)$/)
+    if (!m) continue
+    const after = (m[3] || '').trim()
+    const lab = normalizeFieldLabel(m[1] || '')
+    if (!lab) continue
+    if (lab.length > 12) continue
+    if (/[、,，]/.test(lab) && /(及|以及|和)/.test(lab)) continue
+    if (underlineSentenceShortLabels.has(lab)) continue
+    const phAnyRe = /_{3,}|＿{3,}|—{3,}|－{3,}|-{3,}/g
+    const phMatches = Array.from(raw.matchAll(phAnyRe))
+    if (phMatches.length > 0) {
+      const firstIdx = phMatches[0].index ?? -1
+      const firstToken = phMatches[0][0] || ''
+      if (firstIdx >= 0) {
+        const afterPh = raw.slice(firstIdx + firstToken.length)
+        const cleanedAfterPh = afterPh.replace(phAnyRe, '').trim().replace(/[，,。.;；:：]+$/g, '').trim()
+        const multi = phMatches.length >= 2
+        const hasTextAfterPh = cleanedAfterPh.length > 0
+        if (multi || hasTextAfterPh) continue
+      }
+    }
+    if (after === '' && isNumberedTitleWithColonOnly(raw) && !knownLabels.has(lab)) continue
+    if (after === '' && isProbablyHeadingLabel(lab) && !knownLabels.has(lab)) continue
+    addLabel(lab)
+  }
+
+  for (const line of lines) {
+    const s = line || ''
+    const phRe = /_{3,}|＿{3,}|—{3,}|－{3,}|-{3,}/g
+    const matches = Array.from(s.matchAll(phRe))
+    if (matches.length === 0) continue
+
+    const firstIdx = matches[0].index ?? -1
+    const firstToken = matches[0][0] || ''
+    if (firstIdx < 0) continue
+    const before = s.slice(0, firstIdx)
+    const after = s.slice(firstIdx + firstToken.length)
+    const beforeHasColon = before.includes('：') || before.includes(':')
+
+    if (beforeHasColon) {
+      const cleanedAfter = after.replace(phRe, '').trim().replace(/[，,。.;；:：]+$/g, '').trim()
+      const multi = matches.length >= 2
+      const hasTextAfter = cleanedAfter.length > 0
+      if (multi || hasTextAfter) {
+        const sentence = s.trim().replace(/\s+/g, ' ').replace(phRe, '___').trim()
+        if (!sentence) continue
+        if (sentence.length > 160) continue
+        addLabel(sentence)
+        continue
+      }
+      const lab = normalizeFieldLabel(before)
+      if (!lab) continue
+      if (lab.length > 12) continue
+      if (isProbablyHeadingLabel(lab)) continue
+      addLabel(lab)
+      continue
+    }
+
+    const cleanedAfter = after.replace(phRe, '').trim().replace(/[，,。.;；:：]+$/g, '').trim()
+    const multi = matches.length >= 2
+    const hasTextAfter = cleanedAfter.length > 0
+    if (multi || hasTextAfter) {
+      const sentence = s.trim().replace(/\s+/g, ' ').replace(phRe, '___').trim()
+      if (!sentence) continue
+      if (sentence.length > 140) continue
+      addLabel(sentence)
+      continue
+    }
+
+    const lab = normalizeFieldLabel(before)
+    if (!lab) continue
+    if (lab.length > 12) continue
+    if (isProbablyHeadingLabel(lab)) continue
+    addLabel(lab)
+  }
+
+  const sentenceShortLabels = new Set<string>()
+  for (const lab of orderedLabels) {
+    const idx = lab.indexOf('___')
+    if (idx < 0) continue
+    const before = lab.slice(0, idx)
+    const short = normalizeFieldLabel(before)
+    if (short && short.length <= 12 && !isProbablyHeadingLabel(short)) sentenceShortLabels.add(short)
+  }
+
+  const finalLabels = orderedLabels.filter((lab) => {
+    if (lab.includes('___')) return true
+    if (sentenceShortLabels.has(lab)) return false
+    return true
+  })
+
+  for (const lab of finalLabels) {
+    const fieldId = `field::${sp}::${hashString(lab)}`
+    out.push({ fieldId, structurePath: sp, kind: 'field', label: lab, labelRegex: escapeRegex(lab) })
+  }
+  return out
+}
+
 // --- Component ---
 
 function App() {
@@ -75,20 +379,29 @@ function App() {
   const [configOpen, setConfigOpen] = useState(false)
   const [templateId, setTemplateId] = useState('sales_contract_cn')
   const [aiEnabled, setAiEnabled] = useState(false)
-  const [attachmentPaneOpen, setAttachmentPaneOpen] = useState(true)
   const [uploadPaneCollapsed, setUploadPaneCollapsed] = useState(false)
-  const [rulesetOptions, setRulesetOptions] = useState<Array<{ templateId: string, name: string }>>([
-    { templateId: 'sales_contract_cn', name: '买卖合同（销售）' }
-  ])
   const [checkLoading, setCheckLoading] = useState(false)
   const [checkRun, setCheckRun] = useState<CheckRunResponse | null>(null)
   const [checkFilter, setCheckFilter] = useState<'all' | 'issues'>('all')
   const [checkPaneOpen, setCheckPaneOpen] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-  const [rulesetJson, setRulesetJson] = useState('')
   const [rulesetLoading, setRulesetLoading] = useState(false)
   const [templateBlocks, setTemplateBlocks] = useState<Block[]>([])
+  const [templateIndex, setTemplateIndex] = useState<TemplateListItem[]>([])
+  const [templateIndexLoading, setTemplateIndexLoading] = useState(false)
+  const [newTemplateId, setNewTemplateId] = useState('sales_contract_cn')
+  const [newTemplateName, setNewTemplateName] = useState('买卖合同（销售）')
+  const [newTemplateVersion, setNewTemplateVersion] = useState(new Date().toISOString().slice(0, 10))
+  const [templateDraftFile, setTemplateDraftFile] = useState<File | null>(null)
+  const [fieldRules, setFieldRules] = useState<Record<string, FieldRuleState>>({})
   const [blockPrompts, setBlockPrompts] = useState<Record<string, string>>({})
+  const [globalPromptCfg, setGlobalPromptCfg] = useState<GlobalPromptConfig | null>(null)
+  const [globalPromptLoading, setGlobalPromptLoading] = useState(false)
+  const [globalPromptDefaultDraft, setGlobalPromptDefaultDraft] = useState('')
+  const [globalPromptTemplateDraft, setGlobalPromptTemplateDraft] = useState('')
+  const [globalAnalyzeLoading, setGlobalAnalyzeLoading] = useState(false)
+  const [globalAnalyzeRaw, setGlobalAnalyzeRaw] = useState<string | null>(null)
+  const [globalPaneOpen, setGlobalPaneOpen] = useState(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -97,28 +410,105 @@ function App() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
+      setTemplateIndexLoading(true)
       try {
-        const res = await fetch('/api/check/rulesets')
+        const res = await fetch('/api/templates')
         if (!res.ok) return
         const items = await res.json()
         if (cancelled) return
         if (!Array.isArray(items)) return
-        const next = items
+        const next: TemplateListItem[] = items
           .filter((x: any) => x && typeof x.templateId === 'string')
-          .map((x: any) => ({ templateId: String(x.templateId), name: typeof x.name === 'string' ? x.name : String(x.templateId) }))
-        if (next.length > 0) setRulesetOptions(next)
+          .map((x: any) => ({
+            templateId: String(x.templateId),
+            name: typeof x.name === 'string' ? x.name : String(x.templateId),
+            versions: Array.isArray(x.versions) ? x.versions.map((v: any) => String(v)) : []
+          }))
+        setTemplateIndex(next)
       } catch {
         if (cancelled) return
+      } finally {
+        if (!cancelled) setTemplateIndexLoading(false)
       }
     }
     load()
     return () => { cancelled = true }
   }, [])
 
+  const templateNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const t of templateIndex) map.set(t.templateId, t.name || t.templateId)
+    return map
+  }, [templateIndex])
+
+  const contractTypeOptions = useMemo(() => {
+    const exists = templateIndex.some((t) => t.templateId === templateId)
+    const base = templateIndex.map((t) => ({ templateId: t.templateId, name: t.name || t.templateId }))
+    if (exists) return base
+    return [{ templateId, name: templateNameById.get(templateId) || templateId }, ...base]
+  }, [templateIndex, templateId, templateNameById])
+
+  useEffect(() => {
+    if (!globalPromptCfg) return
+    setGlobalPromptTemplateDraft(globalPromptCfg?.byTemplateId?.[templateId] || '')
+  }, [templateId, globalPromptCfg])
+
   // Helper to map blockId to Block object for rendering
   const getBlock = (blocks: Block[], id: string | null) => {
     if (!id) return null
     return blocks.find(b => b.blockId === id)
+  }
+
+  const detectedFields = useMemo(() => {
+    const all: DetectedField[] = []
+    for (const b of templateBlocks) {
+      all.push(...detectFieldsFromBlock(b))
+    }
+    return all
+  }, [templateBlocks])
+
+  useEffect(() => {
+    const present = new Set(detectedFields.map((f) => f.fieldId))
+    if (present.size === 0) {
+      setFieldRules({})
+      setBlockPrompts({})
+      return
+    }
+
+    setFieldRules((prev) => {
+      const next: Record<string, FieldRuleState> = {}
+      for (const f of detectedFields) {
+        const cur = prev[f.fieldId]
+        if (cur) {
+          next[f.fieldId] = cur
+          continue
+        }
+        const isDate = f.kind === 'field' && /日期/.test(f.label)
+        next[f.fieldId] = {
+          requiredAfterColon: f.kind === 'field' && !/_{3,}|＿{3,}|—{3,}|－{3,}|-{3,}/.test(f.label),
+          dateMonth: isDate,
+          dateFormat: isDate,
+          tableSalesItems: f.kind === 'table'
+        }
+      }
+      return next
+    })
+
+    const presentSp = new Set(detectedFields.map((f) => f.structurePath).filter(Boolean))
+    setBlockPrompts((prev) => {
+      const next: Record<string, string> = {}
+      for (const k of Object.keys(prev)) {
+        if (presentSp.has(k)) next[k] = prev[k]
+      }
+      return next
+    })
+  }, [detectedFields])
+
+  const updateFieldRule = (fieldId: string, patch: Partial<FieldRuleState>) => {
+    setFieldRules((prev) => ({
+      ...prev,
+      [fieldId]: { ...(prev[fieldId] || { requiredAfterColon: false, dateMonth: false, dateFormat: false, tableSalesItems: false }), ...patch }
+    }))
   }
 
   const parseFile = async (file: File, side: 'left' | 'right') => {
@@ -139,7 +529,25 @@ function App() {
 
       const blocks: Block[] = await res.json()
       if (side === 'left') setLeftBlocks(blocks)
-      else setRightBlocks(blocks)
+      else {
+        setRightBlocks(blocks)
+        try {
+          const m = await fetch('/api/templates/match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blocks })
+          })
+          if (m.ok) {
+            const obj: TemplateMatchResponse = await m.json()
+            const best = obj?.best || null
+            if (best && typeof best.templateId === 'string' && typeof best.score === 'number' && best.score >= 0.6) {
+              setTemplateId(best.templateId)
+            }
+          }
+        } catch {
+          void 0
+        }
+      }
     } catch (err: any) {
       console.error(err)
       setError(err.message)
@@ -179,7 +587,12 @@ function App() {
       setCheckRun(null)
       setCheckPaneOpen(false)
       setUploadPaneCollapsed(true)
-      await runChecks()
+      const cr = await runChecks()
+      if (cr) {
+        await runGlobalAnalyze(rows, cr)
+      } else {
+        await runGlobalAnalyze(rows, null)
+      }
     } catch (err: any) {
       console.error(err)
       setError(err.message)
@@ -279,10 +692,10 @@ function App() {
     scrollToRow(diffOnlyRows[i].rowId)
   }
 
-  const runChecks = async () => {
+  const runChecks = async (): Promise<CheckRunResponse | null> => {
     if (rightBlocks.length === 0) {
       setError('请先解析右侧合同文件。')
-      return
+      return null
     }
     setCheckLoading(true)
     setError('')
@@ -299,95 +712,293 @@ function App() {
       if (!res.ok) throw new Error(`检查失败：${res.statusText}`)
       const payload: CheckRunResponse = await res.json()
       setCheckRun(payload)
+      return payload
     } catch (err: any) {
       console.error(err)
       setError(err.message)
+      return null
     } finally {
       setCheckLoading(false)
     }
   }
 
-  const loadRuleset = async () => {
-    setRulesetLoading(true)
+  const runGlobalAnalyze = async (rows: AlignmentRow[], cr: CheckRunResponse | null) => {
+    setGlobalAnalyzeLoading(true)
     setError('')
     try {
-      const res = await fetch(`/api/check/rulesets/${encodeURIComponent(templateId)}`)
-      if (!res.ok) throw new Error(`加载规则集失败：${res.statusText}`)
-      const obj = await res.json()
-      setRulesetJson(JSON.stringify(obj, null, 2))
-    } catch (err: any) {
-      console.error(err)
-      setError(err.message)
-    } finally {
-      setRulesetLoading(false)
-    }
-  }
-
-  const saveRuleset = async () => {
-    setRulesetLoading(true)
-    setError('')
-    try {
-      const parsed = JSON.parse(rulesetJson)
-      const res = await fetch(`/api/check/rulesets/${encodeURIComponent(templateId)}`, {
-        method: 'PUT',
+      const res = await fetch('/api/analyze/global', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed)
+        body: JSON.stringify({
+          templateId,
+          rightBlocks,
+          diffRows: rows,
+          checkRun: cr,
+          promptOverride: null
+        })
       })
-      if (!res.ok) throw new Error(`保存规则集失败：${res.statusText}`)
-      const obj = await res.json()
-      setRulesetJson(JSON.stringify(obj, null, 2))
+      if (!res.ok) throw new Error(`全局分析失败：${res.statusText}`)
+      const payload: GlobalAnalyzeResponse = await res.json()
+      setGlobalAnalyzeRaw(payload.raw || '')
     } catch (err: any) {
       console.error(err)
-      setError(err.message)
+      setError(err?.message || String(err))
     } finally {
-      setRulesetLoading(false)
+      setGlobalAnalyzeLoading(false)
     }
   }
 
-  const parseTemplateFile = async (file: File) => {
+  const loadTemplateSnapshot = async (tid: string) => {
     setLoading(true)
     setError('')
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/parse', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error(`解析标准合同失败：${res.statusText}`)
-      const blocks: Block[] = await res.json()
-      setTemplateBlocks(blocks)
-      setBlockPrompts({})
+      setTemplateDraftFile(null)
+      const res = await fetch(`/api/templates/${encodeURIComponent(tid)}/latest`)
+      if (!res.ok) throw new Error(`加载模板失败：${res.statusText}`)
+      const snapshot = await res.json()
+      if (snapshot && Array.isArray(snapshot.blocks)) {
+        setTemplateBlocks(snapshot.blocks as Block[])
+      } else {
+        setTemplateBlocks([])
+      }
     } catch (err: any) {
       console.error(err)
-      setError(err.message)
+      setError(err?.message || String(err))
+      setTemplateBlocks([])
     } finally {
       setLoading(false)
     }
   }
 
-  const syncPromptsIntoRuleset = () => {
+  useEffect(() => {
+    if (!configOpen) return
+    void loadTemplateSnapshot(templateId)
+  }, [configOpen, templateId])
+
+  const saveRuleset = async () => {
+    setRulesetLoading(true)
+    setError('')
     try {
-      const rs = JSON.parse(rulesetJson || '{}')
-      const existing: any[] = Array.isArray(rs.points) ? rs.points : []
-      const nextPoints = [...existing]
-      templateBlocks.forEach((b, idx) => {
-        const prompt = (blockPrompts[b.stableKey] || '').trim()
-        if (!prompt) return
-        const pointId = `custom.${idx.toString().padStart(4, '0')}.${b.stableKey.slice(0, 10)}`
-        nextPoints.push({
+      const today = new Date().toISOString().slice(0, 10)
+      const draftTemplateId = newTemplateId.trim()
+      const draftName = (newTemplateName.trim() || draftTemplateId).trim()
+      const draftVersion = (newTemplateVersion.trim() || today).trim()
+      let targetTemplateId = templateId
+      let nameOverride: string | null = null
+      let versionOverride: string | null = null
+
+      if (templateDraftFile) {
+        if (!draftTemplateId) throw new Error('templateId 不能为空')
+        const formData = new FormData()
+        formData.append('templateId', draftTemplateId)
+        formData.append('name', draftName || draftTemplateId)
+        formData.append('version', draftVersion || today)
+        formData.append('file', templateDraftFile)
+        const resTpl = await fetch('/api/templates/generate', { method: 'POST', body: formData })
+        if (!resTpl.ok) throw new Error(`保存模板失败：${resTpl.statusText}`)
+        const snapshot = await resTpl.json()
+        if (snapshot && Array.isArray(snapshot.blocks)) setTemplateBlocks(snapshot.blocks as Block[])
+        await reloadTemplateIndex()
+        setTemplateDraftFile(null)
+        setTemplateId(draftTemplateId)
+        targetTemplateId = draftTemplateId
+        nameOverride = draftName || draftTemplateId
+        versionOverride = draftVersion || today
+      }
+
+      let existing: any | null = null
+      try {
+        const res = await fetch(`/api/check/rulesets/${encodeURIComponent(targetTemplateId)}`)
+        if (res.ok) existing = await res.json()
+        else if (res.status !== 404) throw new Error(`加载规则集失败：${res.statusText}`)
+      } catch (e: any) {
+        if (!String(e?.message || '').includes('404')) throw e
+      }
+
+      const existingPoints: any[] = Array.isArray(existing?.points) ? existing.points : []
+      const kept = existingPoints.filter((p: any) => {
+        const pid = typeof p?.pointId === 'string' ? p.pointId : ''
+        if (pid.startsWith('custom.') || pid.startsWith('block.') || pid.startsWith('blockai.') || pid.startsWith('field.') || pid.startsWith('table.')) return false
+        return true
+      })
+
+      const anchorForField = (label: string, fallbackStructurePath: string) => {
+        let key = (label || '').replace(/\s+/g, ' ').trim()
+        const u = key.indexOf('___')
+        if (u >= 0) key = key.slice(0, u).trim()
+        key = key.replace(/^\s*[（(]?\s*[一二三四五六七八九十]+\s*[、.．)]\s*/, '')
+        key = key.replace(/^\s*\d{1,2}\s*[.．、]\s*/, '')
+        const c1 = key.indexOf('：')
+        const c2 = key.indexOf(':')
+        const c = c1 >= 0 && c2 >= 0 ? Math.min(c1, c2) : Math.max(c1, c2)
+        if (c > 0) key = key.slice(0, c).trim()
+        if (key.length >= 2 && key.length <= 30) return { type: 'textRegex', value: escapeRegex(key) }
+        if (fallbackStructurePath) return { type: 'structurePath', value: fallbackStructurePath }
+        return { type: 'textRegex', value: escapeRegex((label || '').slice(0, 30)) }
+      }
+
+      const generated: any[] = []
+      const fieldById = new Map(detectedFields.map((f) => [f.fieldId, f]))
+      for (const [fieldId, f] of fieldById.entries()) {
+        const st = fieldRules[fieldId] || { requiredAfterColon: false, dateMonth: false, dateFormat: false, tableSalesItems: false }
+        const rules: any[] = []
+        if (f.kind === 'field') {
+          if (st.requiredAfterColon) rules.push({ type: 'requiredAfterColon', params: { labelRegex: f.labelRegex } })
+          if (st.dateMonth) rules.push({ type: 'dateMonth', params: { labelRegex: f.labelRegex } })
+          if (st.dateFormat) rules.push({ type: 'dateFormat', params: { labelRegex: f.labelRegex } })
+        } else if (f.kind === 'table') {
+          if (st.tableSalesItems) rules.push({ type: 'tableSalesItems', params: {} })
+        }
+
+        if (rules.length === 0) continue
+
+        const isDate = f.kind === 'field' && (st.dateMonth || st.dateFormat || f.label.includes('日期'))
+        const titleFallback = f.kind === 'table' ? '表格检查' : isDate ? `${f.label} 日期校验` : `${f.label} 请填写`
+        const title = titleFallback.slice(0, 60)
+        const prefix = f.kind === 'table' ? 'table' : 'field'
+        const pointId = `${prefix}.${hashString(fieldId)}`
+        const anchor =
+          f.kind === 'field' ? anchorForField(f.label, f.structurePath) : { type: 'structurePath', value: f.structurePath }
+        generated.push({
           pointId,
-          title: prompt.split('\n')[0].slice(0, 60) || `自定义检查 ${idx + 1}`,
+          title,
+          severity: f.kind === 'table' ? 'medium' : 'high',
+          anchor,
+          rules,
+          ai: null
+        })
+      }
+
+      const spSet = new Set(templateBlocks.map((b) => b.structurePath).filter(Boolean))
+      for (const [sp, rawPrompt] of Object.entries(blockPrompts || {})) {
+        const prompt = (rawPrompt || '').trim()
+        if (!prompt) continue
+        if (!spSet.has(sp)) continue
+        const title = ((prompt.split('\n')[0] || '').trim() || '分块 AI 检查').slice(0, 60)
+        const pointId = `blockai.${hashString(sp)}`
+        generated.push({
+          pointId,
+          title,
           severity: 'medium',
-          anchor: { type: 'stableKey', value: b.stableKey },
+          anchor: { type: 'structurePath', value: sp },
           rules: [],
           ai: { policy: 'optional', prompt }
         })
+      }
+
+      const name = (existing?.name || nameOverride || templateNameById.get(targetTemplateId) || targetTemplateId || '未命名规则集').trim()
+      const version = (existing?.version || versionOverride || today).trim()
+      const payload = {
+        templateId: targetTemplateId,
+        name,
+        version,
+        referenceData: existing?.referenceData || {},
+        points: [...kept, ...generated]
+      }
+
+      const res2 = await fetch(`/api/check/rulesets/${encodeURIComponent(targetTemplateId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       })
-      rs.templateId = rs.templateId || templateId
-      rs.name = rs.name || '未命名规则集'
-      rs.version = rs.version || new Date().toISOString().slice(0, 10)
-      rs.points = nextPoints
-      setRulesetJson(JSON.stringify(rs, null, 2))
-    } catch (e: any) {
-      setError(`规则集 JSON 无效：${e?.message || String(e)}`)
+      if (!res2.ok) throw new Error(`保存规则集失败：${res2.statusText}`)
+      await res2.json()
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || String(err))
+    } finally {
+      setRulesetLoading(false)
+    }
+  }
+
+  const reloadTemplateIndex = async () => {
+    setTemplateIndexLoading(true)
+    try {
+      const res = await fetch('/api/templates')
+      if (!res.ok) throw new Error(`加载模板库失败：${res.statusText}`)
+      const items = await res.json()
+      if (!Array.isArray(items)) return
+      const next: TemplateListItem[] = items
+        .filter((x: any) => x && typeof x.templateId === 'string')
+        .map((x: any) => ({
+          templateId: String(x.templateId),
+          name: typeof x.name === 'string' ? x.name : String(x.templateId),
+          versions: Array.isArray(x.versions) ? x.versions.map((v: any) => String(v)) : []
+        }))
+      setTemplateIndex(next)
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || String(err))
+    } finally {
+      setTemplateIndexLoading(false)
+    }
+  }
+
+  const generateTemplateSnapshot = async (file: File) => {
+    setLoading(true)
+    setError('')
+    try {
+      setFieldRules({})
+      setBlockPrompts({})
+      setTemplateDraftFile(file)
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/parse', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error(`解析模板失败：${res.statusText}`)
+      const blocks = await res.json()
+      if (Array.isArray(blocks)) setTemplateBlocks(blocks as Block[])
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadGlobalPrompt = async () => {
+    setGlobalPromptLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/prompts/global')
+      if (!res.ok) throw new Error(`加载全局提示词失败：${res.statusText}`)
+      const cfg: GlobalPromptConfig = await res.json()
+      setGlobalPromptCfg(cfg)
+      setGlobalPromptDefaultDraft(cfg?.defaultPrompt || '')
+      setGlobalPromptTemplateDraft(cfg?.byTemplateId?.[templateId] || '')
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || String(err))
+    } finally {
+      setGlobalPromptLoading(false)
+    }
+  }
+
+  const saveGlobalPrompt = async () => {
+    setGlobalPromptLoading(true)
+    setError('')
+    try {
+      const next: GlobalPromptConfig = {
+        defaultPrompt: globalPromptDefaultDraft,
+        byTemplateId: { ...(globalPromptCfg?.byTemplateId || {}) }
+      }
+      const trimmed = globalPromptTemplateDraft.trim()
+      if (trimmed) next.byTemplateId[templateId] = trimmed
+      else delete next.byTemplateId[templateId]
+      const res = await fetch('/api/prompts/global', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      })
+      if (!res.ok) throw new Error(`保存全局提示词失败：${res.statusText}`)
+      const saved: GlobalPromptConfig = await res.json()
+      setGlobalPromptCfg(saved)
+      setGlobalPromptDefaultDraft(saved?.defaultPrompt || '')
+      setGlobalPromptTemplateDraft(saved?.byTemplateId?.[templateId] || '')
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || String(err))
+    } finally {
+      setGlobalPromptLoading(false)
     }
   }
 
@@ -832,7 +1443,8 @@ function App() {
           border: 1px solid var(--border);
           border-radius: var(--radius);
           box-shadow: var(--shadow);
-          overflow: visible;
+          overflow-x: hidden;
+          overflow-y: visible;
           max-height: none;
         }
         table { border-collapse: collapse; width: 100%; table-layout: fixed; }
@@ -864,11 +1476,19 @@ function App() {
         .block-content { 
           white-space: pre-wrap;
           word-break: break-word;
+          overflow-wrap: anywhere;
+          overflow-x: hidden;
+        }
+        .block-content p[style*="text-indent"], .block-content p[style*="padding-left"]{
+          text-indent: 0 !important;
+          padding-left: 0 !important;
         }
         .block-content p { margin: 0 0 8px 0; }
         .block-content p:last-child { margin-bottom: 0; }
         .block-content ul, .block-content ol { margin: 4px 0; padding-left: 24px; }
         .block-content li { margin-bottom: 4px; }
+        .block-content table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; }
+        .block-content table th, .block-content table td { white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
 
         .block-content ins{
           background: var(--diff-ins-bg) !important;
@@ -995,7 +1615,7 @@ function App() {
                     value={templateId}
                     onChange={(e) => setTemplateId(e.target.value)}
                   >
-                    {(rulesetOptions.some(o => o.templateId === templateId) ? rulesetOptions : [{ templateId, name: templateId }, ...rulesetOptions]).map(o => (
+                    {contractTypeOptions.map(o => (
                       <option key={o.templateId} value={o.templateId}>{o.name}</option>
                     ))}
                   </select>
@@ -1024,42 +1644,31 @@ function App() {
       )}
 
       <div className="mid-actions">
+        <label className="switch" title="仅展示差异行">
+          <input
+            type="checkbox"
+            checked={showOnlyDiff}
+            onChange={(e) => { setShowOnlyDiff(e.target.checked); setActiveDiffIndex(0) }}
+          />
+          <span className="switch-ui" aria-hidden="true" />
+          <span className="switch-text">只看差异</span>
+        </label>
         <button
-          className="icon-btn"
-          title={attachmentPaneOpen ? '收起附件区' : '展开附件区'}
-          onClick={() => setAttachmentPaneOpen(v => !v)}
+          className="btn-secondary"
+          onClick={() => jumpToDiff(activeDiffIndex - 1)}
+          disabled={diffOnlyRows.length === 0}
+          title="上一处差异"
         >
-          {attachmentPaneOpen ? '📎▾' : '📎▸'}
+          ↑
         </button>
-        {attachmentPaneOpen && (
-          <>
-            <label className="switch" title="仅展示差异行">
-              <input
-                type="checkbox"
-                checked={showOnlyDiff}
-                onChange={(e) => { setShowOnlyDiff(e.target.checked); setActiveDiffIndex(0) }}
-              />
-              <span className="switch-ui" aria-hidden="true" />
-              <span className="switch-text">只看差异</span>
-            </label>
-            <button
-              className="btn-secondary"
-              onClick={() => jumpToDiff(activeDiffIndex - 1)}
-              disabled={diffOnlyRows.length === 0}
-              title="上一处差异"
-            >
-              ↑
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => jumpToDiff(activeDiffIndex + 1)}
-              disabled={diffOnlyRows.length === 0}
-              title="下一处差异"
-            >
-              ↓
-            </button>
-          </>
-        )}
+        <button
+          className="btn-secondary"
+          onClick={() => jumpToDiff(activeDiffIndex + 1)}
+          disabled={diffOnlyRows.length === 0}
+          title="下一处差异"
+        >
+          ↓
+        </button>
         <label className="switch" title="开启：只看问题；关闭：全部">
           <input
             type="checkbox"
@@ -1077,11 +1686,51 @@ function App() {
         >
           {checkPaneOpen ? '🧾▾' : '🧾▸'}
         </button>
+        <button
+          className="icon-btn"
+          title={globalPaneOpen ? '收起全局建议' : '展开全局建议'}
+          onClick={async () => {
+            const next = !globalPaneOpen
+            setGlobalPaneOpen(next)
+            if (next && diffRows.length > 0 && !globalAnalyzeRaw && !globalAnalyzeLoading) {
+              await runGlobalAnalyze(diffRows, checkRun)
+            }
+          }}
+          disabled={diffRows.length === 0}
+        >
+          {globalPaneOpen ? '🧠▾' : '🧠▸'}
+        </button>
       </div>
 
       {checkRun && checkPaneOpen && diffRows.length === 0 && (
         <div style={{ marginTop: 14 }}>
           {renderCheckPanel()}
+        </div>
+      )}
+
+      {globalPaneOpen && (
+        <div style={{ marginTop: 14, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 800 }}>全局风险与改进建议</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                className="btn-secondary"
+                disabled={globalAnalyzeLoading || diffRows.length === 0}
+                onClick={async () => { await runGlobalAnalyze(diffRows, checkRun) }}
+              >
+                {globalAnalyzeLoading ? '分析中...' : '重新分析'}
+              </button>
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            {globalAnalyzeRaw ? (
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6, padding: 12, borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)' }}>{globalAnalyzeRaw}</pre>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {diffRows.length === 0 ? '请先完成对比。' : globalAnalyzeLoading ? '分析中...' : '暂无结果。'}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1227,101 +1876,53 @@ function App() {
         </div>
       )}
 
-      {configOpen && (
-        <div
-          className="modal-overlay"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfigOpen(false)
-          }}
-        >
-          <div className="modal" role="dialog" aria-modal="true">
-            <div className="modal-topbar">
-              <div className="modal-title">规则配置</div>
-              <button className="icon-btn" title="关闭" onClick={() => setConfigOpen(false)}>✕</button>
-            </div>
-            <div style={{ padding: 14, display: 'grid', gap: 14 }}>
-          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ fontWeight: 800 }}>规则配置</div>
-              <select
-                className="select"
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                style={{ width: 260 }}
-              >
-                {(rulesetOptions.some(o => o.templateId === templateId) ? rulesetOptions : [{ templateId, name: templateId }, ...rulesetOptions]).map(o => (
-                  <option key={o.templateId} value={o.templateId}>{o.name}</option>
-                ))}
-              </select>
-              <button className="btn-secondary" onClick={loadRuleset} disabled={rulesetLoading}>{rulesetLoading ? '加载中...' : '加载规则集'}</button>
-              <button className="btn-primary" onClick={saveRuleset} disabled={rulesetLoading || !rulesetJson.trim()}>{rulesetLoading ? '保存中...' : '保存规则集'}</button>
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <textarea
-                value={rulesetJson}
-                onChange={(e) => setRulesetJson(e.target.value)}
-                placeholder="点击“加载规则集”，或直接粘贴/编辑 Ruleset JSON"
-                style={{ width: '100%', minHeight: 260, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace', fontSize: 12, lineHeight: 1.5 }}
-              />
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ fontWeight: 800 }}>按分块录入检查内容（用于 AI 可选检查）</div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button className="btn-secondary" onClick={syncPromptsIntoRuleset} disabled={!rulesetJson.trim() || templateBlocks.length === 0}>同步到规则集</button>
-              </div>
-            </div>
-            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>上传标准合同（用于展示分块）</div>
-                <div className="file-upload-card" onClick={() => {}}>
-                  <input
-                    type="file"
-                    accept=".docx"
-                    style={{ display: 'block' }}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) parseTemplateFile(f)
-                    }}
-                  />
-                </div>
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-                  录入的“检查内容”会作为该分块的 AI 提示词，点击“同步到规则集”后可保存。
-                </div>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                建议写法：第一行写检查点标题，后续写判断标准/输出要求。AI 关闭时，这些检查点不会自动判定，通过规则引擎的结果为准。
-              </div>
-            </div>
-            {templateBlocks.length > 0 && (
-              <div style={{ marginTop: 12, display: 'grid', gap: 10, maxHeight: '60vh', overflow: 'auto', paddingRight: 2 }}>
-                {templateBlocks.map((b) => (
-                  <div key={b.blockId} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.06)' }}>
-                    <div>
-                      <div style={{ fontWeight: 750, marginBottom: 6 }}>分块内容</div>
-                      <div style={{ fontSize: 12, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{(b.text || '').slice(0, 260)}{(b.text || '').length > 260 ? '…' : ''}</div>
-                      <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>{b.stableKey}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 750, marginBottom: 6 }}>检查内容</div>
-                      <textarea
-                        value={blockPrompts[b.stableKey] || ''}
-                        onChange={(e) => setBlockPrompts((prev) => ({ ...prev, [b.stableKey]: e.target.value }))}
-                        placeholder="例如：\n交货日期请填写，至少精确到月\n- 若为空或仅占位线：不通过\n- 输出：缺失位置与建议填写格式"
-                        style={{ width: '100%', minHeight: 110, resize: 'vertical', borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 10, fontSize: 12, lineHeight: 1.5 }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ContractRulesModal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        templateId={templateId}
+        setTemplateId={setTemplateId}
+        saveRuleset={saveRuleset}
+        rulesetLoading={rulesetLoading}
+        templateIndex={templateIndex}
+        templateIndexLoading={templateIndexLoading}
+        reloadTemplateIndex={reloadTemplateIndex}
+        loadTemplateSnapshot={loadTemplateSnapshot}
+        renameTemplate={async (id, name) => {
+          const res = await fetch(`/api/templates/${encodeURIComponent(id)}/name`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          })
+          if (!res.ok) throw new Error(`重命名失败：${res.statusText}`)
+          await reloadTemplateIndex()
+        }}
+        deleteTemplate={async (id) => {
+          const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' })
+          if (!res.ok) throw new Error(`删除失败：${res.statusText}`)
+          await reloadTemplateIndex()
+          if (templateId === id) setTemplateId('sales_contract_cn')
+        }}
+        newTemplateId={newTemplateId}
+        setNewTemplateId={setNewTemplateId}
+        newTemplateName={newTemplateName}
+        setNewTemplateName={setNewTemplateName}
+        newTemplateVersion={newTemplateVersion}
+        setNewTemplateVersion={setNewTemplateVersion}
+        generateTemplateSnapshot={generateTemplateSnapshot}
+        templateBlocks={templateBlocks}
+        detectedFields={detectedFields}
+        fieldRules={fieldRules}
+        updateFieldRule={updateFieldRule}
+        blockPrompts={blockPrompts}
+        setBlockPrompts={setBlockPrompts}
+        globalPromptLoading={globalPromptLoading}
+        globalPromptDefaultDraft={globalPromptDefaultDraft}
+        setGlobalPromptDefaultDraft={setGlobalPromptDefaultDraft}
+        globalPromptTemplateDraft={globalPromptTemplateDraft}
+        setGlobalPromptTemplateDraft={setGlobalPromptTemplateDraft}
+        loadGlobalPrompt={loadGlobalPrompt}
+        saveGlobalPrompt={saveGlobalPrompt}
+      />
     </div>
   )
 }

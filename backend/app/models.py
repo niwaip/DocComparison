@@ -53,6 +53,7 @@ class AnchorType(str, Enum):
     STABLE_KEY = "stableKey"
     TEXT_REGEX = "textRegex"
     TABLE_CONTAINS = "tableContains"
+    STRUCTURE_PATH = "structurePath"
 
 class PointAnchor(BaseModel):
     type: AnchorType
@@ -61,6 +62,7 @@ class PointAnchor(BaseModel):
 class RuleType(str, Enum):
     REQUIRED_AFTER_COLON = "requiredAfterColon"
     DATE_MONTH = "dateMonth"
+    DATE_FORMAT = "dateFormat"
     COMPANY_SUFFIX = "companySuffix"
     OPTION_SELECTED = "optionSelected"
     NUMBER_MAX = "numberMax"
@@ -127,3 +129,50 @@ class CheckRunResponse(BaseModel):
     templateVersion: str
     summary: Dict[str, Any]
     items: List[CheckResultItem]
+
+
+class TemplateSnapshot(BaseModel):
+    templateId: str
+    name: str
+    version: str
+    signature: str
+    blocks: List[Block]
+
+
+class TemplateListItem(BaseModel):
+    templateId: str
+    name: str
+    versions: List[str]
+
+
+class TemplateMatchRequest(BaseModel):
+    blocks: List[Block]
+
+
+class TemplateMatchItem(BaseModel):
+    templateId: str
+    name: str
+    version: str
+    score: float
+
+
+class TemplateMatchResponse(BaseModel):
+    best: Optional[TemplateMatchItem] = None
+    candidates: List[TemplateMatchItem] = []
+
+
+class GlobalPromptConfig(BaseModel):
+    defaultPrompt: str = ""
+    byTemplateId: Dict[str, str] = {}
+
+
+class GlobalAnalyzeRequest(BaseModel):
+    templateId: str
+    rightBlocks: List[Block]
+    diffRows: List[AlignmentRow] = []
+    checkRun: Optional[CheckRunResponse] = None
+    promptOverride: Optional[str] = None
+
+
+class GlobalAnalyzeResponse(BaseModel):
+    raw: str

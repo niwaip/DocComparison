@@ -217,3 +217,18 @@ def upsert_ruleset(ruleset: Ruleset) -> None:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
 
+
+def delete_ruleset(template_id: str) -> None:
+    ensure_rulesets_file()
+    path = _rulesets_file_path()
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    items = payload.get("rulesets", [])
+    next_items = [x for x in items if x.get("templateId") != template_id]
+    if len(next_items) == len(items):
+        return
+    payload["rulesets"] = next_items
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
