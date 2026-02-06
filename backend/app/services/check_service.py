@@ -34,6 +34,10 @@ def _excerpt(s: str, n: int = 220) -> str:
     s2 = _normalize_ws(s)
     return s2[:n] + ("…" if len(s2) > n else "")
 
+def _truncate_for_ai(s: str, n: int = 1800) -> str:
+    s2 = _normalize_ws(s)
+    return s2[:n] + ("…" if len(s2) > n else "")
+
 
 def _has_underline_placeholder(html_fragment: str) -> bool:
     if not html_fragment:
@@ -140,6 +144,35 @@ def _find_block(blocks: List[Block], anchor_type: str, anchor_value: str) -> Opt
     for b in blocks:
         if anchor_value in (b.text or ""):
             return b
+    return None
+
+
+def _block_has_table(b: Block) -> bool:
+    try:
+        if str(b.kind) == "BlockKind.TABLE" or (hasattr(b.kind, "value") and b.kind.value == "table") or b.kind == "table":
+            return True
+    except Exception:
+        pass
+    return "<table" in ((b.htmlFragment or "").lower())
+
+
+def _find_nearby_table_block(blocks: List[Block], anchor_block_id: str) -> Optional[Block]:
+    idx = None
+    for i, b in enumerate(blocks):
+        if b.blockId == anchor_block_id:
+            idx = i
+            break
+    if idx is None:
+        return None
+
+    for j in range(idx, min(len(blocks), idx + 4)):
+        if _block_has_table(blocks[j]):
+            return blocks[j]
+
+    for j in range(max(0, idx - 2), idx):
+        if _block_has_table(blocks[j]):
+            return blocks[j]
+
     return None
 
 
@@ -391,11 +424,13 @@ class CheckService:
             raise ValueError(f"ruleset not found: {template_id}")
 
         items: List[CheckResultItem] = []
+        ai_tasks: List[Dict[str, Any]] = []
+        item_by_point_id: Dict[str, CheckResultItem] = {}
 
         for p in ruleset.points:
             b = _find_block(right_blocks, p.anchor.type.value, p.anchor.value)
             if b is None:
-                items.append(
+                item = (
                     CheckResultItem(
                         pointId=p.pointId,
                         title=p.title,
@@ -405,13 +440,37 @@ class CheckService:
                         evidence=CheckEvidence(rightBlockId=None, excerpt=None),
                     )
                 )
+                items.append(item)
+                item_by_point_id[item.pointId] = item
                 continue
+
+            ai_prompt_raw = p.ai.prompt if p.ai else None
+            needs_table = any(r.type == RuleType.TABLE_SALES_ITEMS for r in (p.rules or []))
+            wants_table_context = needs_table or (not (p.rules or []) and bool((ai_prompt_raw or "").strip()))
+            table_block = None
+            if wants_table_context and not _block_has_table(b):
+                table_block = _find_nearby_table_block(right_blocks, b.blockId)
+                if table_block is not None and table_block.blockId == b.blockId:
+                    table_block = None
+
+            evidence_blocks: List[Block] = [b]
+            if table_block is not None:
+                evidence_blocks.append(table_block)
+            evidence_text = "\n".join([x.text or "" for x in evidence_blocks if (x.text or "").strip()])
+            evidence_block_id = (table_block.blockId if table_block is not None else b.blockId)
+            evidence_excerpt = _excerpt(evidence_text or "")
 
             status: CheckStatus = CheckStatus.PASS
             message_parts: List[str] = []
             for r in p.rules:
                 if r.type == RuleType.BANK_ACCOUNT_IN_LIST:
                     st, msg = _eval_bank_account_in_list(r, b, ruleset)
+                elif r.type == RuleType.TABLE_SALES_ITEMS and table_block is not None:
+                    fn = RULE_EVAL.get(r.type)
+                    if fn is None:
+                        st, msg = CheckStatus.MANUAL, f"未实现规则：{r.type.value}"
+                    else:
+                        st, msg = fn(r, table_block)
                 else:
                     fn = RULE_EVAL.get(r.type)
                     if fn is None:
@@ -444,25 +503,55 @@ class CheckService:
                 severity=p.severity,
                 status=status,
                 message="；".join([x for x in message_parts if x]) or "完成",
-                evidence=CheckEvidence(rightBlockId=b.blockId, excerpt=_excerpt(b.text or "")),
+                evidence=CheckEvidence(rightBlockId=evidence_block_id, excerpt=evidence_excerpt),
             )
 
             ai_policy = p.ai.policy.value if p.ai else None
-            ai_prompt = p.ai.prompt if p.ai else None
-            if self._ai_should_run(ai_policy, ai_enabled, status) and ai_prompt:
-                try:
-                    ai_res = self.llm.check_point(
-                        title=p.title,
-                        instruction=ai_prompt,
-                        evidence_text=b.text or "",
-                        rule_status=status.value,
-                        rule_message=item.message,
-                    )
-                    item.ai = ai_res
-                except Exception as e:
-                    item.ai = CheckAiResult(raw=f"AI failed: {repr(e)}")
-
+            ai_prompt = ai_prompt_raw
             items.append(item)
+            item_by_point_id[item.pointId] = item
+
+            if self._ai_should_run(ai_policy, ai_enabled, status):
+                instruction = (ai_prompt or "").strip()
+                if not instruction:
+                    instruction = "请解释该检查点的风险与建议修订，结合证据与规则结果，输出简短可执行建议。"
+                ai_tasks.append(
+                    {
+                        "pointId": p.pointId,
+                        "title": p.title,
+                        "instruction": instruction,
+                        "evidence": _truncate_for_ai(evidence_text or ""),
+                        "rule": {"status": status.value, "message": item.message},
+                    }
+                )
+
+        if ai_enabled and ai_tasks:
+            chunk_size = 10
+            for i in range(0, len(ai_tasks), chunk_size):
+                chunk = ai_tasks[i : i + chunk_size]
+                try:
+                    res_map = self.llm.check_points_batch(chunk)
+                    for pid, ai_res in res_map.items():
+                        it = item_by_point_id.get(pid)
+                        if it is not None:
+                            it.ai = ai_res
+                except Exception:
+                    for t in chunk:
+                        pid = str(t.get("pointId") or "")
+                        it = item_by_point_id.get(pid)
+                        if it is None:
+                            continue
+                        try:
+                            ai_res = self.llm.check_point(
+                                title=str(t.get("title") or ""),
+                                instruction=str(t.get("instruction") or ""),
+                                evidence_text=str(t.get("evidence") or ""),
+                                rule_status=str(((t.get("rule") or {}) or {}).get("status") or ""),
+                                rule_message=str(((t.get("rule") or {}) or {}).get("message") or ""),
+                            )
+                            it.ai = ai_res
+                        except Exception as e:
+                            it.ai = CheckAiResult(raw=f"AI failed: {repr(e)}")
 
         summary = {
             "generatedAt": _utc_now_iso(),

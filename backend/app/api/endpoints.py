@@ -202,8 +202,23 @@ def analyze_global(req: GlobalAnalyzeRequest):
         prompt = (req.promptOverride or "").strip()
         if not prompt:
             prompt = (cfg.byTemplateId.get(req.templateId) or cfg.defaultPrompt or "").strip()
+        blocks_payload: List[Dict[str, Any]] = []
+        for b in req.rightBlocks or []:
+            t = (b.text or "").strip()
+            if not t:
+                continue
+            if len(t) > 1600:
+                t = t[:1600] + "…"
+            blocks_payload.append(
+                {
+                    "blockId": b.blockId,
+                    "kind": str(getattr(b.kind, "value", b.kind)),
+                    "text": t,
+                }
+            )
         payload = {
             "templateId": req.templateId,
+            "blocks": blocks_payload,
             "diffRows": [x.model_dump() for x in req.diffRows],
             "checkRun": req.checkRun.model_dump() if req.checkRun is not None else None,
         }

@@ -34,6 +34,7 @@ export interface FieldRuleState {
   dateMonth: boolean
   dateFormat: boolean
   tableSalesItems: boolean
+  aiPrompt: string
 }
 
 type Props = {
@@ -203,11 +204,6 @@ export default function ContractRulesModal(props: Props) {
   const hasDetected = detectedFields.length > 0
   const [blockOpen, setBlockOpen] = React.useState<Record<string, boolean>>({})
   const [snapshotFileName, setSnapshotFileName] = React.useState('')
-  const templateNameById = React.useMemo(() => {
-    const m = new Map<string, string>()
-    for (const t of templateIndex) m.set(t.templateId, t.name || t.templateId)
-    return m
-  }, [templateIndex])
   const blockGroups = React.useMemo(() => {
     const order = new Map<string, number>()
     templateBlocks.forEach((b, idx) => order.set(b.structurePath, idx))
@@ -278,6 +274,24 @@ export default function ContractRulesModal(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
+                              setTemplateId(t.templateId)
+                              setNewTemplateId(t.templateId)
+                              setNewTemplateName(t.name || t.templateId)
+                              const latestVersion = (Array.isArray(t.versions) ? [...t.versions].sort() : []).slice(-1)[0]
+                              if (latestVersion) setNewTemplateVersion(latestVersion)
+                              try {
+                                await loadTemplateSnapshot(t.templateId)
+                              } catch (e: any) {
+                                window.alert(e?.message || String(e))
+                              }
+                            }}
+                            style={{ height: 34, padding: '0 10px' }}
+                          >
+                            编辑
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            onClick={async () => {
                               const nextName = (window.prompt('请输入新的模板名称：', t.name || '') || '').trim()
                               if (!nextName) return
                               try {
@@ -288,7 +302,7 @@ export default function ContractRulesModal(props: Props) {
                             }}
                             style={{ height: 34, padding: '0 10px' }}
                           >
-                            编辑
+                            重命名
                           </button>
                           <button
                             className="btn-secondary"
@@ -472,7 +486,7 @@ export default function ContractRulesModal(props: Props) {
                           <div style={{ fontWeight: 750, marginBottom: 6 }}>固定规则</div>
                           <div style={{ display: 'grid', gap: 10 }}>
                             {g.fields.map((f) => {
-                              const st = fieldRules[f.fieldId] || { requiredAfterColon: f.kind === 'field', dateMonth: f.kind === 'field' && f.label.includes('日期'), dateFormat: f.kind === 'field' && f.label.includes('日期'), tableSalesItems: f.kind === 'table' }
+                              const st = fieldRules[f.fieldId] || { requiredAfterColon: f.kind === 'field', dateMonth: f.kind === 'field' && f.label.includes('日期'), dateFormat: f.kind === 'field' && f.label.includes('日期'), tableSalesItems: f.kind === 'table', aiPrompt: '' }
                               const title = f.kind === 'table' ? '表格' : f.label
                               const excerptLine = f.kind === 'field' ? findLabelExcerpt(g.block, f.label) : ''
                               return (
@@ -503,10 +517,35 @@ export default function ContractRulesModal(props: Props) {
                                         )}
                                       </>
                                     ) : (
-                                      <label style={checkboxStyle}>
-                                        <input type="checkbox" checked={st.tableSalesItems} onChange={(e) => updateFieldRule(f.fieldId, { tableSalesItems: e.target.checked })} />
-                                        <span>销售明细表校验</span>
-                                      </label>
+                                      <>
+                                        <label style={checkboxStyle}>
+                                          <input type="checkbox" checked={st.tableSalesItems} onChange={(e) => updateFieldRule(f.fieldId, { tableSalesItems: e.target.checked })} />
+                                          <span>销售明细表校验</span>
+                                        </label>
+                                        <div style={{ marginTop: 8 }}>
+                                          <div style={{ fontSize: 12, fontWeight: 750, color: 'var(--text)' }}>表格 AI 提示词（可选）</div>
+                                          <textarea
+                                            value={st.aiPrompt || ''}
+                                            onChange={(e) => updateFieldRule(f.fieldId, { aiPrompt: e.target.value })}
+                                            placeholder={'例如：\n校验该表格中 产品名称/数量/单价/总价/合计金额 是否填写完整、计算是否一致，输出问题清单（简短、可执行）。'}
+                                            style={{
+                                              width: '100%',
+                                              maxWidth: '100%',
+                                              boxSizing: 'border-box',
+                                              marginTop: 8,
+                                              minHeight: 120,
+                                              resize: 'vertical',
+                                              borderRadius: 10,
+                                              border: '1px solid var(--control-border)',
+                                              background: 'var(--panel)',
+                                              color: 'var(--text)',
+                                              padding: 10,
+                                              fontSize: 12,
+                                              lineHeight: 1.5
+                                            }}
+                                          />
+                                        </div>
+                                      </>
                                     )}
                                   </div>
                                 </div>
@@ -569,14 +608,14 @@ export default function ContractRulesModal(props: Props) {
                 </button>
               </div>
             </div>
-            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
+            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 750, marginBottom: 8 }}>默认提示词</div>
-                <textarea value={globalPromptDefaultDraft} onChange={(e) => setGlobalPromptDefaultDraft(e.target.value)} placeholder="例如：请基于 diffRows 与 checkRun，总结整体风险等级、关键问题、改进建议与缺失信息。输出严格 JSON。" style={{ width: '100%', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }} />
+                <textarea value={globalPromptDefaultDraft} onChange={(e) => setGlobalPromptDefaultDraft(e.target.value)} placeholder="例如：请基于 blocks/diffRows/checkRun，总结整体风险等级、关键问题、改进建议与缺失信息。输出严格 JSON。" style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }} />
               </div>
-              <div>
-                <div style={{ fontWeight: 750, marginBottom: 8 }}>当前合同类型覆盖（{templateId}）</div>
-                <textarea value={globalPromptTemplateDraft} onChange={(e) => setGlobalPromptTemplateDraft(e.target.value)} placeholder="留空表示使用默认提示词。" style={{ width: '100%', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 750, marginBottom: 8, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>当前合同类型覆盖（{templateId}）</div>
+                <textarea value={globalPromptTemplateDraft} onChange={(e) => setGlobalPromptTemplateDraft(e.target.value)} placeholder="留空表示使用默认提示词。" style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }} />
               </div>
             </div>
           </div>

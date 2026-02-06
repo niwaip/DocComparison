@@ -295,6 +295,48 @@
             }
           ],
           "ai": null
+        },
+        {
+          "pointId": "blockai.827bdd33",
+          "title": "各项项目填写完整，尤其是”产品名称“、”单价“、”数量“、”总价“、”合计金额“必须填写，计算正确，大小写应一致",
+          "severity": "medium",
+          "anchor": {
+            "type": "structurePath",
+            "value": "body.ol[0].li[0]"
+          },
+          "rules": [],
+          "ai": {
+            "policy": "optional",
+            "prompt": "各项项目填写完整，尤其是”产品名称“、”单价“、”数量“、”总价“、”合计金额“必须填写，计算正确，大小写应一致"
+          }
+        },
+        {
+          "pointId": "blockai.d198429d",
+          "title": "买方的名称应完整填写，应有”公司“后缀",
+          "severity": "medium",
+          "anchor": {
+            "type": "structurePath",
+            "value": "body.p[0]"
+          },
+          "rules": [],
+          "ai": {
+            "policy": "optional",
+            "prompt": "买方的名称应完整填写，应有”公司“后缀"
+          }
+        },
+        {
+          "pointId": "blockai.827bdd10",
+          "title": "期限请填写，一般不大于30",
+          "severity": "medium",
+          "anchor": {
+            "type": "structurePath",
+            "value": "body.ol[0].li[3]"
+          },
+          "rules": [],
+          "ai": {
+            "policy": "optional",
+            "prompt": "期限请填写，一般不大于30"
+          }
         }
       ]
     }

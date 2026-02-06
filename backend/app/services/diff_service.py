@@ -4,7 +4,7 @@ import html
 from typing import List, Optional, Dict, Any, Tuple
 from difflib import SequenceMatcher
 from diff_match_patch import diff_match_patch
-from app.models import Block, AlignmentRow, RowKind
+from app.models import Block, AlignmentRow, RowKind, BlockKind
 from app.utils.text_utils import normalize_text, strip_section_noise, get_leading_section_label, escape_html, dice_coefficient
 
 def sha1(text: str) -> str:
@@ -278,20 +278,18 @@ def compute_block_aligned_diff(
                 r_inner = f"<ins style='background:#e6ffec;color:#216e39;text-decoration:none;'>{escape_html(r)}</ins>"
                 rows.append(("&nbsp;", r_inner, "inserted"))
 
-    table_rows = []
+    left_rows = []
+    right_rows = []
     for l_html, r_html, kind in rows:
         l_cell = f"<div class='aligned-cell-inner'>{l_html}</div>"
         r_cell = f"<div class='aligned-cell-inner'>{r_html}</div>"
-        table_rows.append(
-            "<tr>"
-            f"<td class='aligned-col left-col {kind}'>{l_cell}</td>"
-            f"<td class='aligned-col right-col {kind}'>{r_cell}</td>"
-            "</tr>"
-        )
+        left_rows.append("<tr>" f"<td class='aligned-col left-col {kind}'>{l_cell}</td>" "</tr>")
+        right_rows.append("<tr>" f"<td class='aligned-col right-col {kind}'>{r_cell}</td>" "</tr>")
 
-    table_html = "<table class='aligned-table'>" + "".join(table_rows) + "</table>"
-    left_view = "<div class='aligned-lines'>" + table_html.replace("aligned-table", "aligned-table left-view") + "</div>"
-    right_view = "<div class='aligned-lines'>" + table_html.replace("aligned-table", "aligned-table right-view") + "</div>"
+    left_table = "<table class='aligned-table one-col left-view'>" + "".join(left_rows) + "</table>"
+    right_table = "<table class='aligned-table one-col right-view'>" + "".join(right_rows) + "</table>"
+    left_view = "<div class='aligned-lines'>" + left_table + "</div>"
+    right_view = "<div class='aligned-lines'>" + right_table + "</div>"
     return left_view, right_view
 
 def align_blocks(left: List[Block], right: List[Block], ignore_section_number: bool = True) -> List[AlignmentRow]:
@@ -362,31 +360,36 @@ def align_blocks(left: List[Block], right: List[Block], ignore_section_number: b
                     next_row += 1
                     continue
 
-                if "\n" in (l_block.text or "") or "\n" in (r_block.text or ""):
-                    l_inner, r_inner = compute_block_aligned_diff(
+                is_table = False
+                try:
+                    is_table = l_block.kind == BlockKind.TABLE or r_block.kind == BlockKind.TABLE
+                except Exception:
+                    is_table = False
+
+                if not is_table:
+                    lf = (l_block.htmlFragment or "").lower()
+                    rf = (r_block.htmlFragment or "").lower()
+                    if "<table" in lf or "<table" in rf:
+                        is_table = True
+
+                if is_table:
+                    left_diff_html = l_block.htmlFragment or escape_html(l_block.text or "")
+                    right_diff_html = r_block.htmlFragment or escape_html(r_block.text or "")
+                else:
+                    left_diff_html, right_diff_html = compute_block_aligned_diff(
                         l_block.text or "",
                         r_block.text or "",
                         l_block.htmlFragment or "",
                         r_block.htmlFragment or "",
                     )
-                else:
-                    l_inner, r_inner = compute_inline_diff(l_block.text or "", r_block.text or "")
-
-                l_start, l_end = extract_wrapper(l_block.htmlFragment)
-                r_start, r_end = extract_wrapper(r_block.htmlFragment)
-
-                l_start = re.sub(r'padding-left:\s*[\d\.]+pt;?', '', l_start)
-                l_start = re.sub(r'text-indent:\s*[\d\.]+pt;?', '', l_start)
-                r_start = re.sub(r'padding-left:\s*[\d\.]+pt;?', '', r_start)
-                r_start = re.sub(r'text-indent:\s*[\d\.]+pt;?', '', r_start)
 
                 rows.append(AlignmentRow(
                     rowId=f"r_{str(next_row).zfill(4)}",
                     kind=RowKind.CHANGED,
                     leftBlockId=l_block.blockId,
                     rightBlockId=r_block.blockId,
-                    leftDiffHtml=f"{l_start}{l_inner}{l_end}",
-                    rightDiffHtml=f"{r_start}{r_inner}{r_end}"
+                    leftDiffHtml=left_diff_html,
+                    rightDiffHtml=right_diff_html
                 ))
                 next_row += 1
 
