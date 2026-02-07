@@ -483,6 +483,66 @@ body {
   overflow-y: visible;
   max-height: none;
 }
+.diff-container-virtual {
+  overflow-y: auto;
+  max-height: min(900px, calc(100vh - 260px));
+}
+.diff-grid-head{
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  background: var(--table-head-bg);
+  backdrop-filter: blur(10px);
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-grid-head-cell{
+  padding: 10px 12px;
+  min-width: 0;
+}
+.diff-grid-head-divider{
+  background: var(--divider-bg);
+  border-left: 1px solid var(--control-border);
+  border-right: 1px solid var(--control-border);
+}
+.diff-grid-row{
+  display: grid;
+  border-bottom: 1px solid var(--border);
+}
+.diff-grid-row:hover > .diff-grid-cell{
+  background: rgba(255,255,255,0.03);
+}
+.diff-grid-row:hover > .diff-check-cell{
+  background: rgba(255,255,255,0.06);
+}
+.diff-grid-row.diff-row-active > .diff-grid-cell{
+  box-shadow: inset 0 0 0 2px rgba(37,99,235,0.28);
+}
+.diff-grid-row.diff-row-active > .diff-check-cell{
+  box-shadow: inset 0 0 0 2px rgba(37,99,235,0.28);
+}
+.diff-grid-cell{
+  padding: 10px 12px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.diff-check-td{
+  padding: 0;
+  border-left: none;
+}
+.diff-check-cell{
+  border-left: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+}
 table { border-collapse: collapse; width: 100%; }
 .diff-container > table { table-layout: fixed; }
 thead th {
