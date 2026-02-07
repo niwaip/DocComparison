@@ -248,8 +248,8 @@ export default function ContractRulesModalLegacy(props: Props) {
                               if (latestVersion) setNewTemplateVersion(latestVersion)
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
-                              } catch (e: any) {
-                                window.alert(e?.message || String(e))
+                              } catch (e) {
+                                window.alert(e instanceof Error ? e.message : String(e))
                               }
                             }}
                             style={{ height: 34, padding: '0 10px' }}
@@ -263,8 +263,8 @@ export default function ContractRulesModalLegacy(props: Props) {
                               if (!nextName) return
                               try {
                                 await renameTemplate(tpl.templateId, nextName)
-                              } catch (e: any) {
-                                window.alert(e?.message || String(e))
+                              } catch (e) {
+                                window.alert(e instanceof Error ? e.message : String(e))
                               }
                             }}
                             style={{ height: 34, padding: '0 10px' }}
@@ -277,8 +277,8 @@ export default function ContractRulesModalLegacy(props: Props) {
                               if (!window.confirm(t('rules.templateLibrary.deleteConfirm', { name: tpl.name || tpl.templateId }))) return
                               try {
                                 await deleteTemplate(tpl.templateId)
-                              } catch (e: any) {
-                                window.alert(e?.message || String(e))
+                              } catch (e) {
+                                window.alert(e instanceof Error ? e.message : String(e))
                               }
                             }}
                             style={{ height: 34, padding: '0 10px', borderColor: 'rgba(239,68,68,0.55)', color: 'rgba(239,68,68,0.95)' }}
@@ -291,8 +291,8 @@ export default function ContractRulesModalLegacy(props: Props) {
                               setTemplateId(tpl.templateId)
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
-                              } catch (e: any) {
-                                window.alert(e?.message || String(e))
+                              } catch (e) {
+                                window.alert(e instanceof Error ? e.message : String(e))
                               }
                             }}
                             style={{ height: 34, padding: '0 10px' }}

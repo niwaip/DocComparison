@@ -1,10 +1,82 @@
-import type { AlignmentRow, Block, CheckRunResponse, GlobalAnalyzeResponse, GlobalPromptConfig, TemplateListItem, TemplateMatchResponse } from './domain/types'
+import type {
+  AlignmentRow,
+  Block,
+  CheckRunResponse,
+  GlobalAnalyzeResponse,
+  GlobalPromptConfig,
+  Ruleset,
+  RulesetAi,
+  RulesetAnchor,
+  RulesetPoint,
+  RulesetRule,
+  TemplateListItem,
+  TemplateMatchResponse
+} from './domain/types'
 
 type TemplateSnapshot = {
   templateId?: string
   name?: string
   version?: string
   blocks?: Block[]
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
+const asStringArray = (v: unknown): string[] => {
+  if (!Array.isArray(v)) return []
+  return v.map((x) => String(x))
+}
+
+const asRecord = (v: unknown): Record<string, unknown> => (isRecord(v) ? v : {})
+
+const asRulesetAnchor = (v: unknown): RulesetAnchor | null => {
+  if (!isRecord(v)) return null
+  const type = v.type
+  const value = v.value
+  if (type !== 'structurePath' && type !== 'textRegex') return null
+  if (typeof value !== 'string') return null
+  return { type, value }
+}
+
+const asRulesetRule = (v: unknown): RulesetRule | null => {
+  if (!isRecord(v)) return null
+  if (typeof v.type !== 'string') return null
+  const params = v.params
+  return { type: v.type, params: isRecord(params) ? params : undefined }
+}
+
+const asRulesetAi = (v: unknown): RulesetAi | null => {
+  if (v === null) return null
+  if (!isRecord(v)) return null
+  const policy = typeof v.policy === 'string' ? v.policy : ''
+  if (!policy) return null
+  const prompt = typeof v.prompt === 'string' ? v.prompt : undefined
+  return { policy: policy as RulesetAi['policy'], prompt }
+}
+
+const asRulesetPoint = (v: unknown): RulesetPoint | null => {
+  if (!isRecord(v)) return null
+  const pointId = typeof v.pointId === 'string' ? v.pointId : ''
+  const title = typeof v.title === 'string' ? v.title : ''
+  const severity = v.severity
+  if (!pointId || !title) return null
+  if (severity !== 'high' && severity !== 'medium' && severity !== 'low') return null
+  const anchor = asRulesetAnchor(v.anchor)
+  if (!anchor) return null
+  const rulesRaw = v.rules
+  const rules = Array.isArray(rulesRaw) ? rulesRaw.map(asRulesetRule).filter((x): x is RulesetRule => !!x) : []
+  const ai = asRulesetAi(v.ai)
+  return { pointId, title, severity, anchor, rules, ai }
+}
+
+const normalizeRuleset = (templateId: string, raw: unknown): Ruleset | null => {
+  if (!isRecord(raw)) return null
+  const pointsRaw = raw.points
+  const points = Array.isArray(pointsRaw) ? pointsRaw.map(asRulesetPoint).filter((x): x is RulesetPoint => !!x) : []
+  const name = typeof raw.name === 'string' ? raw.name : ''
+  const version = typeof raw.version === 'string' ? raw.version : ''
+  const referenceData = asRecord(raw.referenceData)
+  return { templateId, name, version, referenceData, points }
 }
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
@@ -43,7 +115,13 @@ export const api = {
     })
   },
 
-  analyzeGlobal: async (payload: { templateId: string; rightBlocks: Block[]; diffRows: AlignmentRow[]; checkRun: any; promptOverride: string | null }): Promise<GlobalAnalyzeResponse> => {
+  analyzeGlobal: async (payload: {
+    templateId: string
+    rightBlocks: Block[]
+    diffRows: AlignmentRow[]
+    checkRun: CheckRunResponse | null
+    promptOverride: string | null
+  }): Promise<GlobalAnalyzeResponse> => {
     return await fetchJson<GlobalAnalyzeResponse>('/api/analyze/global', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -66,15 +144,16 @@ export const api = {
 
   templates: {
     list: async (): Promise<TemplateListItem[]> => {
-      const items = await fetchJson<any[]>('/api/templates')
-      if (!Array.isArray(items)) return []
-      return items
-        .filter((x: any) => x && typeof x.templateId === 'string')
-        .map((x: any) => ({
-          templateId: String(x.templateId),
-          name: typeof x.name === 'string' ? x.name : String(x.templateId),
-          versions: Array.isArray(x.versions) ? x.versions.map((v: any) => String(v)) : []
-        }))
+      const raw = await fetchJson<unknown>('/api/templates')
+      if (!Array.isArray(raw)) return []
+      return raw
+        .filter((x) => isRecord(x) && typeof x.templateId === 'string')
+        .map((x) => {
+          const templateId = String(x.templateId)
+          const name = typeof x.name === 'string' ? x.name : templateId
+          const versions = asStringArray(x.versions)
+          return { templateId, name, versions }
+        })
     },
 
     match: async (blocks: Block[]): Promise<TemplateMatchResponse> => {
@@ -116,15 +195,19 @@ export const api = {
   },
 
   rulesets: {
-    get: async (templateId: string): Promise<any | null> => {
-      return await fetchJsonMaybe404<any>(`/api/check/rulesets/${encodeURIComponent(templateId)}`)
+    get: async (templateId: string): Promise<Ruleset | null> => {
+      const raw = await fetchJsonMaybe404<unknown>(`/api/check/rulesets/${encodeURIComponent(templateId)}`)
+      if (raw === null) return null
+      return normalizeRuleset(templateId, raw)
     },
-    put: async (templateId: string, payload: any): Promise<any> => {
-      return await fetchJson<any>(`/api/check/rulesets/${encodeURIComponent(templateId)}`, {
+    put: async (templateId: string, payload: Ruleset): Promise<Ruleset> => {
+      const raw = await fetchJson<unknown>(`/api/check/rulesets/${encodeURIComponent(templateId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
+      const normalized = normalizeRuleset(templateId, raw)
+      return normalized || payload
     }
   }
 }

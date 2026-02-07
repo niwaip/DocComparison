@@ -24,6 +24,7 @@ type Props = {
 
 export default function TemplateLibraryPanel(props: Props) {
   const { t } = useI18n()
+  const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
   const {
     templateIndex,
     templateIndexLoading,
@@ -78,8 +79,8 @@ export default function TemplateLibraryPanel(props: Props) {
                         if (latestVersion) setNewTemplateVersion(latestVersion)
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
-                        } catch (e: any) {
-                          window.alert(e?.message || String(e))
+                        } catch (e) {
+                          window.alert(errText(e))
                         }
                       }}
                       style={{ height: 34, padding: '0 10px' }}
@@ -93,8 +94,8 @@ export default function TemplateLibraryPanel(props: Props) {
                         if (!nextName) return
                         try {
                           await renameTemplate(tpl.templateId, nextName)
-                        } catch (e: any) {
-                          window.alert(e?.message || String(e))
+                        } catch (e) {
+                          window.alert(errText(e))
                         }
                       }}
                       style={{ height: 34, padding: '0 10px' }}
@@ -107,8 +108,8 @@ export default function TemplateLibraryPanel(props: Props) {
                         if (!window.confirm(t('rules.templateLibrary.deleteConfirm', { name: tpl.name || tpl.templateId }))) return
                         try {
                           await deleteTemplate(tpl.templateId)
-                        } catch (e: any) {
-                          window.alert(e?.message || String(e))
+                        } catch (e) {
+                          window.alert(errText(e))
                         }
                       }}
                       style={{ height: 34, padding: '0 10px', borderColor: 'rgba(239,68,68,0.55)', color: 'rgba(239,68,68,0.95)' }}
@@ -121,8 +122,8 @@ export default function TemplateLibraryPanel(props: Props) {
                         setTemplateId(tpl.templateId)
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
-                        } catch (e: any) {
-                          window.alert(e?.message || String(e))
+                        } catch (e) {
+                          window.alert(errText(e))
                         }
                       }}
                       style={{ height: 34, padding: '0 10px' }}

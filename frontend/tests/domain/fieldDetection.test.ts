@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { detectFieldsFromBlock } from './fieldDetection'
-import type { Block } from './types'
+import { detectFieldsFromBlock } from '../../src/domain/fieldDetection'
+import type { Block } from '../../src/domain/types'
 
 const mkBlock = (patch: Partial<Block>): Block => {
   return {

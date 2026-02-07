@@ -421,7 +421,7 @@ const dictByLang: Record<Lang, Dict> = {
   'en-US': enUS
 }
 
-const format = (tpl: string, params?: Record<string, any>) => {
+const format = (tpl: string, params?: Record<string, unknown>) => {
   if (!params) return tpl
   return tpl.replace(/\{(\w+)\}/g, (_m, k) => {
     const v = params[k]
@@ -440,7 +440,7 @@ export const normalizeLang = (raw: string | null | undefined): Lang => {
 export const createT = (lang: Lang) => {
   const primary = dictByLang[lang]
   const fallback = dictByLang['zh-CN']
-  return (key: string, params?: Record<string, any>) => {
+  return (key: string, params?: Record<string, unknown>) => {
     const raw = primary[key] ?? fallback[key] ?? key
     return format(raw, params)
   }
@@ -449,7 +449,7 @@ export const createT = (lang: Lang) => {
 type I18nContextValue = {
   lang: Lang
   setLang: (lang: Lang) => void
-  t: (key: string, params?: Record<string, any>) => string
+  t: (key: string, params?: Record<string, unknown>) => string
 }
 
 const I18nContext = React.createContext<I18nContextValue | null>(null)

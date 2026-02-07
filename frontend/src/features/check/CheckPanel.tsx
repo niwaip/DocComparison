@@ -1,12 +1,12 @@
 import React from 'react'
 import { useI18n } from '../../i18n'
-import type { CheckRunResponse } from '../../domain/types'
+import type { CheckAiResult, CheckRunResponse } from '../../domain/types'
 import { checkDomId } from './checkDom'
 
 type Props = {
   checkRun: CheckRunResponse
   checkFilter: 'all' | 'issues'
-  getAiText: (ai: any) => string
+  getAiText: (ai: CheckAiResult | null | undefined) => string
 }
 
 export default function CheckPanel(props: Props) {
@@ -78,4 +78,3 @@ export default function CheckPanel(props: Props) {
     </div>
   )
 }
-

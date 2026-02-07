@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { escapeRegex, hashString } from './textUtils'
+import { escapeRegex, hashString } from '../../src/domain/textUtils'
 
 describe('textUtils', () => {
   it('hashString is deterministic and hex padded', () => {

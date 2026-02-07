@@ -36,6 +36,8 @@ export default function GlobalAnalyzePanel(props: Props) {
 
   const { t, lang } = useI18n()
 
+  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
   const getBlock = (blocks: Block[], id: string | null) => {
     if (!id) return null
     return blocks.find((b) => b.blockId === id) || null
@@ -58,7 +60,7 @@ export default function GlobalAnalyzePanel(props: Props) {
     }
 
     try {
-      let parsed: any = null
+      let parsed: unknown = null
       try {
         parsed = JSON.parse(raw)
       } catch {
@@ -77,7 +79,7 @@ export default function GlobalAnalyzePanel(props: Props) {
         color: 'var(--text)'
       }
 
-      const humanizeText = (s: any) => {
+      const humanizeText = (s: unknown) => {
         let out = String(s || '')
         out = out.replace(/\bblockai\.[a-z0-9]+\b/gi, t('ref.thisBlock'))
         out = out.replace(/\btable\.[a-z0-9]+\b/gi, t('ref.thisTable'))
@@ -88,7 +90,7 @@ export default function GlobalAnalyzePanel(props: Props) {
         return out
       }
 
-      const riskBadge = (level: any) => {
+      const riskBadge = (level: unknown) => {
         const v = String(level || '').toLowerCase()
         const cfg =
           v === 'high'
@@ -101,7 +103,7 @@ export default function GlobalAnalyzePanel(props: Props) {
         return <span style={{ ...chipStyle, background: cfg.bg, borderColor: cfg.bd, color: cfg.fg }}>{cfg.text}</span>
       }
 
-      const priorityBadge = (p: any) => {
+      const priorityBadge = (p: unknown) => {
         const v = String(p || '').toLowerCase()
         const cfg =
           v === 'critical' || v === 'high'
@@ -138,7 +140,7 @@ export default function GlobalAnalyzePanel(props: Props) {
         return null
       }
 
-      const evidenceChips = (ids: any) => {
+      const evidenceChips = (ids: unknown) => {
         const arr = Array.isArray(ids) ? ids : []
         const clean = arr.map((x) => String(x)).filter(Boolean)
         if (clean.length === 0) return <span style={{ color: 'var(--muted)' }}>{t('evidence.none')}</span>
@@ -218,9 +220,10 @@ export default function GlobalAnalyzePanel(props: Props) {
         )
       }
 
-      const blockTitleFor = (b: any) => {
-        const blockId = typeof b?.blockId === 'string' ? b.blockId : ''
-        if (!blockId) return humanizeText(b?.blockTitle || b?.title || '')
+      const blockTitleFor = (b: unknown) => {
+        const obj = isRecord(b) ? b : null
+        const blockId = typeof obj?.blockId === 'string' ? obj.blockId : ''
+        if (!blockId) return humanizeText(obj?.blockTitle || obj?.title || '')
         const blk = getBlock(rightBlocks, blockId) || getBlock(leftBlocks, blockId)
         const txt = String(blk?.text || '').trim()
         if (txt) {
@@ -238,7 +241,7 @@ export default function GlobalAnalyzePanel(props: Props) {
       const thStyle: React.CSSProperties = { textAlign: 'left', fontSize: 12, color: 'var(--muted)', padding: '8px 8px', borderBottom: '1px solid var(--control-border)', background: 'rgba(255,255,255,0.03)' }
       const tdStyle: React.CSSProperties = { verticalAlign: 'top', fontSize: 13, color: 'var(--text)', padding: '8px 8px', borderBottom: '1px solid var(--control-border)' }
 
-      if (!parsed || typeof parsed !== 'object') {
+      if (!isRecord(parsed)) {
         return (
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6, padding: 12, borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)' }}>
             {raw}
@@ -289,13 +292,17 @@ export default function GlobalAnalyzePanel(props: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {keyFindings.map((x: any, idx: number) => (
-                      <tr key={String(x?.title || idx)}>
-                        <td style={tdStyle}>{humanizeText(x?.title || '')}</td>
-                        <td style={{ ...tdStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>{humanizeText(x?.detail || '')}</td>
-                        <td style={tdStyle}>{evidenceChips(x?.evidenceIds)}</td>
-                      </tr>
-                    ))}
+                    {keyFindings.map((x: unknown, idx: number) => {
+                      const obj = isRecord(x) ? x : null
+                      const title = obj?.title
+                      return (
+                        <tr key={String((typeof title === 'string' && title) || idx)}>
+                          <td style={tdStyle}>{humanizeText(title || '')}</td>
+                          <td style={{ ...tdStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>{humanizeText(obj?.detail || '')}</td>
+                          <td style={tdStyle}>{evidenceChips(obj?.evidenceIds)}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -315,13 +322,17 @@ export default function GlobalAnalyzePanel(props: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {improvementSuggestions.map((x: any, idx: number) => (
-                      <tr key={String(x?.title || idx)}>
-                        <td style={tdStyle}>{priorityBadge(x?.priority)}</td>
-                        <td style={tdStyle}>{humanizeText(x?.title || '')}</td>
-                        <td style={{ ...tdStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>{humanizeText(x?.detail || '')}</td>
-                      </tr>
-                    ))}
+                    {improvementSuggestions.map((x: unknown, idx: number) => {
+                      const obj = isRecord(x) ? x : null
+                      const title = obj?.title
+                      return (
+                        <tr key={String((typeof title === 'string' && title) || idx)}>
+                          <td style={tdStyle}>{priorityBadge(obj?.priority)}</td>
+                          <td style={tdStyle}>{humanizeText(title || '')}</td>
+                          <td style={{ ...tdStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>{humanizeText(obj?.detail || '')}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -332,7 +343,7 @@ export default function GlobalAnalyzePanel(props: Props) {
             <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'var(--control-bg)' }}>
               <div style={{ fontWeight: 900, marginBottom: 10 }}>{t('globalAnalyze.missing')}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {missingInformation.map((x: any, idx: number) => (
+                {missingInformation.map((x: unknown, idx: number) => (
                   <span key={String(x || idx)} style={chipStyle}>
                     {humanizeText(x || '')}
                   </span>
@@ -345,22 +356,29 @@ export default function GlobalAnalyzePanel(props: Props) {
             <details style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'var(--control-bg)', padding: 12 }} open>
               <summary style={{ cursor: 'pointer', fontWeight: 900 }}>{t('globalAnalyze.sections')}</summary>
               <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(560px, 1fr))', gap: 10 }}>
-                {sections.map((s: any, idx: number) => (
-                  <div key={String(s?.title || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
+                {sections.map((s: unknown, idx: number) => {
+                  const obj = isRecord(s) ? s : null
+                  const title = obj?.title
+                  const findings = Array.isArray(obj?.findings) ? obj?.findings : []
+                  const suggestions = Array.isArray(obj?.suggestions) ? obj?.suggestions : []
+                  const evidenceIds = obj?.evidenceIds
+
+                  return (
+                    <div key={String((typeof title === 'string' && title) || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 900 }}>{humanizeText(s?.title || '')}</div>
+                      <div style={{ fontWeight: 900 }}>{humanizeText(title || '')}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {riskBadge(s?.riskLevel)}
-                        {Array.isArray(s?.evidenceIds) && s.evidenceIds.length > 0 && (
-                          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.evidenceCount', { count: s.evidenceIds.length })}</span>
+                        {riskBadge(obj?.riskLevel)}
+                        {Array.isArray(evidenceIds) && evidenceIds.length > 0 && (
+                          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.evidenceCount', { count: evidenceIds.length })}</span>
                         )}
                       </div>
                     </div>
-                    {Array.isArray(s?.findings) && s.findings.length > 0 && (
+                    {findings.length > 0 && (
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
                         <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.issue')}</div>
                         <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                          {s.findings.map((x: any, i2: number) => (
+                          {findings.map((x: unknown, i2: number) => (
                             <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                               {humanizeText(x || '')}
                             </div>
@@ -368,11 +386,11 @@ export default function GlobalAnalyzePanel(props: Props) {
                         </div>
                       </div>
                     )}
-                    {Array.isArray(s?.suggestions) && s.suggestions.length > 0 && (
+                    {suggestions.length > 0 && (
                       <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
                         <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.suggestion')}</div>
                         <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                          {s.suggestions.map((x: any, i2: number) => (
+                          {suggestions.map((x: unknown, i2: number) => (
                             <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                               {humanizeText(x || '')}
                             </div>
@@ -380,9 +398,10 @@ export default function GlobalAnalyzePanel(props: Props) {
                         </div>
                       </div>
                     )}
-                    <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>{evidenceChips(s?.evidenceIds)}</div>
+                    <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>{evidenceChips(evidenceIds)}</div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </details>
           )}
@@ -391,19 +410,25 @@ export default function GlobalAnalyzePanel(props: Props) {
             <details style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'var(--control-bg)', padding: 12 }}>
               <summary style={{ cursor: 'pointer', fontWeight: 900 }}>{t('globalAnalyze.blocks')}</summary>
               <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(560px, 1fr))', gap: 10 }}>
-                {blockReviews.slice(0, 60).map((b: any, idx: number) => (
-                  <div key={String(b?.blockId || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
+                {blockReviews.slice(0, 60).map((b: unknown, idx: number) => {
+                  const obj = isRecord(b) ? b : null
+                  const blockId = typeof obj?.blockId === 'string' ? obj.blockId : ''
+                  const issues = Array.isArray(obj?.issues) ? obj.issues : []
+                  const suggestions = Array.isArray(obj?.suggestions) ? obj.suggestions : []
+
+                  return (
+                    <div key={String(blockId || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 900 }} title={typeof b?.blockId === 'string' ? `${labelFor(b.blockId)}（${b.blockId}）` : undefined}>
-                        {blockTitleFor(b)}
+                      <div style={{ fontWeight: 900 }} title={blockId ? `${labelFor(blockId)}（${blockId}）` : undefined}>
+                        {blockTitleFor(obj)}
                       </div>
-                      {riskBadge(b?.riskLevel)}
+                      {riskBadge(obj?.riskLevel)}
                     </div>
-                    {Array.isArray(b?.issues) && b.issues.length > 0 && (
+                    {issues.length > 0 && (
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
                         <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.issue')}</div>
                         <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                          {b.issues.map((x: any, i2: number) => (
+                          {issues.map((x: unknown, i2: number) => (
                             <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                               {humanizeText(x || '')}
                             </div>
@@ -411,11 +436,11 @@ export default function GlobalAnalyzePanel(props: Props) {
                         </div>
                       </div>
                     )}
-                    {Array.isArray(b?.suggestions) && b.suggestions.length > 0 && (
+                    {suggestions.length > 0 && (
                       <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
                         <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.suggestion')}</div>
                         <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                          {b.suggestions.map((x: any, i2: number) => (
+                          {suggestions.map((x: unknown, i2: number) => (
                             <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                               {humanizeText(x || '')}
                             </div>
@@ -424,7 +449,8 @@ export default function GlobalAnalyzePanel(props: Props) {
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
                 {blockReviews.length > 60 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.shownFirst', { count: 60 })}</div>}
               </div>
             </details>
@@ -468,4 +494,3 @@ export default function GlobalAnalyzePanel(props: Props) {
     </div>
   )
 }
-

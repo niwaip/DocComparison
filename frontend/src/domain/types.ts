@@ -45,11 +45,25 @@ export interface CheckResultItem {
   ai?: CheckAiResult | null
 }
 
+export interface CheckRunSummaryCounts {
+  pass: number
+  fail: number
+  warn: number
+  manual: number
+  error: number
+  skipped: number
+}
+
+export interface CheckRunSummary {
+  generatedAt?: string
+  counts: CheckRunSummaryCounts
+}
+
 export interface CheckRunResponse {
   runId: string
   templateId: string
   templateVersion: string
-  summary: any
+  summary: CheckRunSummary
   items: CheckResultItem[]
 }
 
@@ -96,3 +110,34 @@ export interface FieldRuleState {
   aiPrompt: string
 }
 
+export interface RulesetAnchor {
+  type: 'structurePath' | 'textRegex'
+  value: string
+}
+
+export interface RulesetRule {
+  type: string
+  params?: Record<string, unknown>
+}
+
+export interface RulesetAi {
+  policy: 'optional' | 'required' | 'disabled' | (string & {})
+  prompt?: string
+}
+
+export interface RulesetPoint {
+  pointId: string
+  title: string
+  severity: 'high' | 'medium' | 'low'
+  anchor: RulesetAnchor
+  rules: RulesetRule[]
+  ai?: RulesetAi | null
+}
+
+export interface Ruleset {
+  templateId: string
+  name: string
+  version: string
+  referenceData: Record<string, unknown>
+  points: RulesetPoint[]
+}
