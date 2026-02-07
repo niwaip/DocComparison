@@ -438,6 +438,29 @@ export const useRulesConfigFlow = (p: Params) => {
     [errText, reloadTemplateIndex, setTemplateId, t, templateId]
   )
 
+  const exportSkill = React.useCallback(
+    async (templateId: string, version?: string) => {
+      try {
+        await api.skills.export(templateId, version)
+      } catch (e) {
+        throw new Error(t('error.skill.export', { message: errText(e) }))
+      }
+    },
+    [errText, t]
+  )
+
+  const importSkill = React.useCallback(
+    async (file: File, overwriteSameVersion: boolean) => {
+      try {
+        await api.skills.import(file, overwriteSameVersion)
+      } catch (e) {
+        throw new Error(t('error.skill.import', { message: errText(e) }))
+      }
+      await reloadTemplateIndex()
+    },
+    [errText, reloadTemplateIndex, t]
+  )
+
   const loadGlobalPrompt = React.useCallback(async () => {
     setGlobalPromptLoading(true)
     setError('')
@@ -523,6 +546,8 @@ export const useRulesConfigFlow = (p: Params) => {
     generateTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
+    exportSkill,
+    importSkill,
     loadGlobalPrompt,
     saveGlobalPrompt
   }

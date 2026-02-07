@@ -26,12 +26,16 @@ from app.services.template_store import (
     get_latest_template,
     rename_template,
     delete_template,
+    save_template_docx,
 )
+from app.services.skill_bundle import export_skill_bundle, import_skill_bundle
 from app.services.prompt_store import get_global_prompt_config, upsert_global_prompt_config
 from typing import List, Dict, Any
 import os
 import shutil
 import tempfile
+from fastapi.responses import StreamingResponse
+import io
 
 router = APIRouter()
 llm_service = LLMService()
@@ -123,6 +127,8 @@ async def generate_template(
             blocks=blocks,
         )
         upsert_template(snapshot)
+        with open(tmp_path, "rb") as f:
+            save_template_docx(template_id=templateId, version=version, data=f.read())
         if get_ruleset(templateId) is None:
             upsert_ruleset(Ruleset(templateId=templateId, name=name, version=version, referenceData={}, points=[]))
         return snapshot
@@ -230,6 +236,26 @@ def analyze_global(req: GlobalAnalyzeRequest):
 @router.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@router.get("/skills/export")
+def export_skill(templateId: str, version: str | None = None):
+    payload, filename = export_skill_bundle(template_id=templateId, version=version)
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/skills/import")
+async def import_skill(
+    file: UploadFile = File(...),
+    overwriteSameVersion: bool = Form(False),
+):
+    data = await file.read()
+    out = import_skill_bundle(bundle_bytes=data, overwrite_same_version=overwriteSameVersion)
+    return out
 
 @router.get("/check/rulesets", response_model=List[Ruleset])
 def get_rulesets():

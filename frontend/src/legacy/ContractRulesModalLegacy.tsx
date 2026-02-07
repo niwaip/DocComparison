@@ -18,6 +18,8 @@ type Props = {
   loadTemplateSnapshot: (templateId: string) => Promise<void>
   renameTemplate: (templateId: string, name: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
+  exportSkill: (templateId: string, version?: string) => Promise<void>
+  importSkill: (file: File, overwriteSameVersion: boolean) => Promise<void>
 
   newTemplateId: string
   setNewTemplateId: (v: string) => void

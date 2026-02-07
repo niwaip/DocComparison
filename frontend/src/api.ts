@@ -294,6 +294,12 @@ const fetchJsonMaybe404 = async (url: string, init?: RequestInit, opts?: Request
   return (await res.json()) as unknown
 }
 
+const extractFilename = (res: Response): string | null => {
+  const cd = res.headers.get('content-disposition') || ''
+  const m = /filename="([^"]+)"/i.exec(cd)
+  return m?.[1] ? String(m[1]) : null
+}
+
 export const api = {
   parseDoc: async (file: File, opts?: { signal?: AbortSignal }): Promise<Block[]> => {
     const formData = new FormData()
@@ -513,6 +519,41 @@ export const api = {
       }, { timeoutMs: 60_000 })
       const normalized = normalizeRuleset(templateId, raw)
       return normalized || payload
+    }
+  },
+  skills: {
+    export: async (templateId: string, version?: string): Promise<void> => {
+      const qs = new URLSearchParams()
+      qs.set('templateId', templateId)
+      if (version) qs.set('version', version)
+      const url = `/api/skills/export?${qs.toString()}`
+      const res = await request(url, { method: 'GET' }, { timeoutMs: 60_000 })
+      if (!res.ok) throw await buildHttpError(url, res)
+      const blob = await res.blob()
+      const filename = extractFilename(res) || `${templateId}-${version || 'latest'}.cskill`
+      const objUrl = URL.createObjectURL(blob)
+      try {
+        const a = document.createElement('a')
+        a.href = objUrl
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      } finally {
+        URL.revokeObjectURL(objUrl)
+      }
+    },
+
+    import: async (file: File, overwriteSameVersion: boolean): Promise<{ skillId: string; skillVersion: string; name: string }> => {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('overwriteSameVersion', overwriteSameVersion ? 'true' : 'false')
+      const raw = await fetchJson('/api/skills/import', { method: 'POST', body: formData }, { timeoutMs: 120_000 })
+      if (!isRecord(raw)) throw invalidResponseError('/api/skills/import')
+      if (typeof raw.skillId !== 'string') throw invalidResponseError('/api/skills/import')
+      if (typeof raw.skillVersion !== 'string') throw invalidResponseError('/api/skills/import')
+      if (typeof raw.name !== 'string') throw invalidResponseError('/api/skills/import')
+      return { skillId: raw.skillId, skillVersion: raw.skillVersion, name: raw.name }
     }
   }
 }

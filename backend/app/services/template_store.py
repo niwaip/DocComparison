@@ -14,6 +14,33 @@ def _sha1(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
+def _assets_root_dir() -> str:
+    app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.path.join(app_dir, "data", "template_assets")
+
+
+def _safe_segment(s: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", (s or "").strip())
+
+
+def get_template_docx_path(template_id: str, version: str) -> Optional[str]:
+    root = _assets_root_dir()
+    p = os.path.join(root, _safe_segment(template_id), _safe_segment(version), "template.docx")
+    return p if os.path.exists(p) else None
+
+
+def save_template_docx(template_id: str, version: str, data: bytes) -> str:
+    root = _assets_root_dir()
+    d = os.path.join(root, _safe_segment(template_id), _safe_segment(version))
+    os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, "template.docx")
+    tmp = p + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, p)
+    return p
+
+
 def _templates_file_path() -> str:
     app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return os.path.join(app_dir, "templates.json")

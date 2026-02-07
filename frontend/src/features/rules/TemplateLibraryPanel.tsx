@@ -9,6 +9,8 @@ type Props = {
   loadTemplateSnapshot: (templateId: string) => Promise<void>
   renameTemplate: (templateId: string, name: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
+  exportSkill: (templateId: string, version?: string) => Promise<void>
+  importSkill: (file: File, overwriteSameVersion: boolean) => Promise<void>
   reportError: (e: unknown) => void
 
   templateId: string
@@ -32,6 +34,8 @@ export default function TemplateLibraryPanel(props: Props) {
     loadTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
+    exportSkill,
+    importSkill,
     reportError,
     setTemplateId,
     setNewTemplateId,
@@ -44,17 +48,36 @@ export default function TemplateLibraryPanel(props: Props) {
   } = props
 
   const [snapshotFileName, setSnapshotFileName] = React.useState('')
+  const [importFileName, setImportFileName] = React.useState('')
 
   return (
     <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 800 }}>{t('rules.templateLibrary.title')}</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            id="skill-import-upload"
+            type="file"
+            accept=".cskill"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (!f) return
+              setImportFileName(f.name)
+              const overwrite = window.confirm(t('rules.templateLibrary.importOverwrite'))
+              importSkill(f, overwrite).catch(reportError)
+              e.currentTarget.value = ''
+            }}
+          />
+          <label htmlFor="skill-import-upload" className="btn-secondary" style={{ height: 34, padding: '0 10px', display: 'inline-flex', alignItems: 'center' }}>
+            {t('rules.templateLibrary.import')}
+          </label>
           <button className="btn-secondary" onClick={reloadTemplateIndex} disabled={templateIndexLoading}>
             {templateIndexLoading ? t('common.loading') : t('rules.templateLibrary.refresh')}
           </button>
         </div>
       </div>
+      {importFileName && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>{importFileName}</div>}
 
       <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.06)' }}>
@@ -87,6 +110,20 @@ export default function TemplateLibraryPanel(props: Props) {
                       style={{ height: 34, padding: '0 10px' }}
                     >
                       {t('common.edit')}
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      onClick={async () => {
+                        const latestVersion = (Array.isArray(tpl.versions) ? [...tpl.versions].sort() : []).slice(-1)[0]
+                        try {
+                          await exportSkill(tpl.templateId, latestVersion)
+                        } catch (e) {
+                          reportError(e)
+                        }
+                      }}
+                      style={{ height: 34, padding: '0 10px' }}
+                    >
+                      {t('rules.templateLibrary.export')}
                     </button>
                     <button
                       className="btn-secondary"

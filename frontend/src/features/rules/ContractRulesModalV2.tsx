@@ -21,6 +21,8 @@ export type ContractRulesModalProps = {
   loadTemplateSnapshot: (templateId: string) => Promise<void>
   renameTemplate: (templateId: string, name: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
+  exportSkill: (templateId: string, version?: string) => Promise<void>
+  importSkill: (file: File, overwriteSameVersion: boolean) => Promise<void>
 
   newTemplateId: string
   setNewTemplateId: (v: string) => void
@@ -62,6 +64,8 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
     loadTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
+    exportSkill,
+    importSkill,
     newTemplateId,
     setNewTemplateId,
     newTemplateName,
@@ -109,6 +113,8 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
             loadTemplateSnapshot={loadTemplateSnapshot}
             renameTemplate={renameTemplate}
             deleteTemplate={deleteTemplate}
+            exportSkill={exportSkill}
+            importSkill={importSkill}
             reportError={reportError}
             templateId={templateId}
             setTemplateId={setTemplateId}

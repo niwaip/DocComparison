@@ -359,6 +359,8 @@ function App() {
     generateTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
+    exportSkill,
+    importSkill,
     loadGlobalPrompt,
     saveGlobalPrompt
   } = useRulesConfigFlow({
@@ -677,6 +679,8 @@ function App() {
         loadTemplateSnapshot={loadTemplateSnapshot}
         renameTemplate={renameTemplate}
         deleteTemplate={deleteTemplate}
+        exportSkill={exportSkill}
+        importSkill={importSkill}
         newTemplateId={newTemplateId}
         setNewTemplateId={setNewTemplateId}
         newTemplateName={newTemplateName}

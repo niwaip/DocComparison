@@ -121,6 +121,7 @@ const zhCN: Dict = {
   'rules.templateLibrary.existing': '已有模板',
   'rules.templateLibrary.versions': '{count} 个版本',
   'common.edit': '编辑',
+  'rules.templateLibrary.export': '导出',
   'rules.templateLibrary.rename': '重命名',
   'rules.templateLibrary.renamePrompt': '请输入新的模板名称：',
   'common.delete': '删除',
@@ -134,6 +135,8 @@ const zhCN: Dict = {
   'rules.templateLibrary.noFile': '未选择文件',
   'rules.templateLibrary.draftHint': '已载入模板草稿（未保存）。完成规则配置后点击“保存（创建/更新）”才会写入模板库。',
   'rules.templateLibrary.uploadHint': '上传模板文件后会自动载入分块，无需在分块区重复上传。',
+  'rules.templateLibrary.import': '导入',
+  'rules.templateLibrary.importOverwrite': '检测到同版本技能包，是否覆盖（确定=覆盖，取消=拒绝导入）？',
 
   'rules.blockRules.title': '按分块配置检查（固定规则 + AI 可选检查）',
   'rules.blockRules.expandAll': '全部展开',
@@ -205,6 +208,8 @@ const zhCN: Dict = {
   'error.template.delete': '删除失败：{message}',
   'error.ruleset.load': '加载规则集失败：{message}',
   'error.ruleset.save': '保存规则集失败：{message}',
+  'error.skill.export': '导出失败：{message}',
+  'error.skill.import': '导入失败：{message}',
 
   'error.globalPrompt.load': '加载全局提示词失败：{message}',
   'error.globalPrompt.save': '保存全局提示词失败：{message}'
@@ -327,6 +332,7 @@ const enUS: Dict = {
   'rules.templateLibrary.existing': 'Existing',
   'rules.templateLibrary.versions': '{count} versions',
   'common.edit': 'Edit',
+  'rules.templateLibrary.export': 'Export',
   'rules.templateLibrary.rename': 'Rename',
   'rules.templateLibrary.renamePrompt': 'Enter a new template name:',
   'common.delete': 'Delete',
@@ -340,6 +346,8 @@ const enUS: Dict = {
   'rules.templateLibrary.noFile': 'No file selected',
   'rules.templateLibrary.draftHint': 'Template draft is loaded (not saved). Click “Save (create/update)” after configuring rules to persist it.',
   'rules.templateLibrary.uploadHint': 'Uploading a template loads blocks automatically; no need to upload again in the block section.',
+  'rules.templateLibrary.import': 'Import',
+  'rules.templateLibrary.importOverwrite': 'Same version detected. Overwrite? (OK=overwrite, Cancel=abort import)',
 
   'rules.blockRules.title': 'Block Rules (built-in + optional AI)',
   'rules.blockRules.expandAll': 'Expand all',
@@ -411,6 +419,8 @@ const enUS: Dict = {
   'error.template.delete': 'Delete failed: {message}',
   'error.ruleset.load': 'Failed to load ruleset: {message}',
   'error.ruleset.save': 'Failed to save ruleset: {message}',
+  'error.skill.export': 'Export failed: {message}',
+  'error.skill.import': 'Import failed: {message}',
 
   'error.globalPrompt.load': 'Failed to load global prompt: {message}',
   'error.globalPrompt.save': 'Failed to save global prompt: {message}'
