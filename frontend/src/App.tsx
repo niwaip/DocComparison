@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer } from 'react'
+import React, { useCallback, useEffect, useMemo, useReducer } from 'react'
 import ContractRulesModal from './ContractRulesModal'
 import { api } from './api'
 import HeaderBar from './components/HeaderBar'
@@ -30,6 +30,32 @@ import type {
 const TEMPLATE_MATCH_THRESHOLD = 0.84
 
 // --- Component ---
+
+class AppErrorBoundary extends React.Component<
+  { onError: (e: Error) => void; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state: { hasError: boolean } = { hasError: false }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    this.props.onError(error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-msg">
+          <span>⚠️</span> 页面渲染出错，请刷新后重试。
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 type AppState = {
   lang: Lang
@@ -286,7 +312,10 @@ function App() {
   } = setters
 
   const t = useMemo(() => createT(lang), [lang])
-  const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+  const errText = useCallback((e: unknown) => (e instanceof Error ? e.message : String(e)), [])
+  const reportError = useCallback((e: unknown) => {
+    setError(errText(e))
+  }, [errText, setError])
   const setLangInProvider = useCallback((next: Lang) => {
     dispatch({ type: 'set', key: 'lang', value: next })
   }, [dispatch])
@@ -446,8 +475,7 @@ function App() {
         }
       }
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
     } finally {
       setLoading(false)
     }
@@ -494,8 +522,7 @@ function App() {
       setLeftFile(new File([], t('filename.standardTemplate', { label }), { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
       await runDiffCore(blocks, rightBlocks, tid)
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
     } finally {
       setLoading(false)
     }
@@ -520,8 +547,7 @@ function App() {
     try {
       await runDiffCore(leftBlocks, rightBlocks, templateId)
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
     } finally {
       setLoading(false)
     }
@@ -617,13 +643,12 @@ function App() {
       setCheckRun(payload)
       return payload
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
       return null
     } finally {
       setCheckLoading(false)
     }
-  }, [aiCheckEnabled, setCheckLoading, setCheckRun, setError, t])
+  }, [aiCheckEnabled, reportError, setCheckLoading, setCheckRun, setError, t])
 
   const runGlobalAnalyze = async (rows: AlignmentRow[], cr: CheckRunResponse | null) => {
     if (!aiAnalyzeEnabled) return
@@ -677,8 +702,7 @@ function App() {
       })
       setGlobalAnalyzeRaw(payload.raw || '')
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
     } finally {
       setGlobalAnalyzeLoading(false)
     }
@@ -779,13 +803,12 @@ function App() {
       setFieldRules(nextFieldRules)
       setBlockPrompts(nextBlockPrompts)
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
       setTemplateBlocks([])
     } finally {
       setLoading(false)
     }
-  }, [setBlockPrompts, setError, setFieldRules, setLoading, setTemplateBlocks, setTemplateDraftFile, t])
+  }, [errText, reportError, setBlockPrompts, setError, setFieldRules, setLoading, setTemplateBlocks, setTemplateDraftFile, t])
 
   useEffect(() => {
     if (!configOpen) return
@@ -924,8 +947,7 @@ function App() {
         throw new Error(t('error.ruleset.save', { message: errText(e) }))
       }
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
     } finally {
       setRulesetLoading(false)
     }
@@ -936,7 +958,6 @@ function App() {
     try {
       setTemplateIndex(await api.templates.list())
     } catch (err) {
-      console.error(err)
       setError(t('error.templateIndex.load', { message: errText(err) }))
     } finally {
       setTemplateIndexLoading(false)
@@ -956,8 +977,7 @@ function App() {
         throw new Error(t('error.template.parse', { message: errText(e) }))
       }
     } catch (err) {
-      console.error(err)
-      setError(errText(err))
+      reportError(err)
     } finally {
       setLoading(false)
     }
@@ -972,12 +992,12 @@ function App() {
       setGlobalPromptDefaultDraft(cfg?.defaultPrompt || '')
       setGlobalPromptTemplateDraft(cfg?.byTemplateId?.[templateId] || '')
     } catch (err) {
-      console.error(err)
       setError(t('error.globalPrompt.load', { message: errText(err) }))
     } finally {
       setGlobalPromptLoading(false)
     }
   }, [
+    errText,
     setError,
     setGlobalPromptCfg,
     setGlobalPromptDefaultDraft,
@@ -1012,7 +1032,6 @@ function App() {
       setGlobalPromptDefaultDraft(saved?.defaultPrompt || '')
       setGlobalPromptTemplateDraft(saved?.byTemplateId?.[templateId] || '')
     } catch (err) {
-      console.error(err)
       setError(t('error.globalPrompt.save', { message: errText(err) }))
     } finally {
       setGlobalPromptLoading(false)
@@ -1040,6 +1059,7 @@ function App() {
 
   return (
     <I18nProvider lang={lang} setLang={setLangInProvider}>
+    <AppErrorBoundary onError={reportError}>
     <div className="app-container" style={checkPaneOpen ? { maxWidth: 2200 } : undefined}>
       <HeaderBar
         theme={theme}
@@ -1153,6 +1173,7 @@ function App() {
       <ContractRulesModal
         open={configOpen}
         onClose={() => setConfigOpen(false)}
+        reportError={reportError}
         templateId={templateId}
         setTemplateId={setTemplateId}
         saveRuleset={saveRuleset}
@@ -1200,6 +1221,7 @@ function App() {
         saveGlobalPrompt={saveGlobalPrompt}
       />
     </div>
+    </AppErrorBoundary>
     </I18nProvider>
   )
 }

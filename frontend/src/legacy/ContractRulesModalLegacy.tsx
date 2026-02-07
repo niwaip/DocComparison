@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 type Props = {
   open: boolean
   onClose: () => void
+  reportError: (e: unknown) => void
 
   templateId: string
   setTemplateId: (v: string) => void
@@ -52,6 +53,7 @@ export default function ContractRulesModalLegacy(props: Props) {
   const {
     open,
     onClose,
+    reportError,
     templateId,
     setTemplateId,
     saveRuleset,
@@ -249,7 +251,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
                               } catch (e) {
-                                window.alert(e instanceof Error ? e.message : String(e))
+                                reportError(e)
                               }
                             }}
                             style={{ height: 34, padding: '0 10px' }}
@@ -264,7 +266,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                               try {
                                 await renameTemplate(tpl.templateId, nextName)
                               } catch (e) {
-                                window.alert(e instanceof Error ? e.message : String(e))
+                                reportError(e)
                               }
                             }}
                             style={{ height: 34, padding: '0 10px' }}
@@ -278,7 +280,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                               try {
                                 await deleteTemplate(tpl.templateId)
                               } catch (e) {
-                                window.alert(e instanceof Error ? e.message : String(e))
+                                reportError(e)
                               }
                             }}
                             style={{ height: 34, padding: '0 10px', borderColor: 'rgba(239,68,68,0.55)', color: 'rgba(239,68,68,0.95)' }}
@@ -292,7 +294,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
                               } catch (e) {
-                                window.alert(e instanceof Error ? e.message : String(e))
+                                reportError(e)
                               }
                             }}
                             style={{ height: 34, padding: '0 10px' }}

@@ -9,6 +9,7 @@ type Props = {
   loadTemplateSnapshot: (templateId: string) => Promise<void>
   renameTemplate: (templateId: string, name: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
+  reportError: (e: unknown) => void
 
   templateId: string
   setTemplateId: (v: string) => void
@@ -24,7 +25,6 @@ type Props = {
 
 export default function TemplateLibraryPanel(props: Props) {
   const { t } = useI18n()
-  const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
   const {
     templateIndex,
     templateIndexLoading,
@@ -32,6 +32,7 @@ export default function TemplateLibraryPanel(props: Props) {
     loadTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
+    reportError,
     setTemplateId,
     setNewTemplateId,
     setNewTemplateName,
@@ -80,7 +81,7 @@ export default function TemplateLibraryPanel(props: Props) {
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
                         } catch (e) {
-                          window.alert(errText(e))
+                          reportError(e)
                         }
                       }}
                       style={{ height: 34, padding: '0 10px' }}
@@ -95,7 +96,7 @@ export default function TemplateLibraryPanel(props: Props) {
                         try {
                           await renameTemplate(tpl.templateId, nextName)
                         } catch (e) {
-                          window.alert(errText(e))
+                          reportError(e)
                         }
                       }}
                       style={{ height: 34, padding: '0 10px' }}
@@ -109,7 +110,7 @@ export default function TemplateLibraryPanel(props: Props) {
                         try {
                           await deleteTemplate(tpl.templateId)
                         } catch (e) {
-                          window.alert(errText(e))
+                          reportError(e)
                         }
                       }}
                       style={{ height: 34, padding: '0 10px', borderColor: 'rgba(239,68,68,0.55)', color: 'rgba(239,68,68,0.95)' }}
@@ -123,7 +124,7 @@ export default function TemplateLibraryPanel(props: Props) {
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
                         } catch (e) {
-                          window.alert(errText(e))
+                          reportError(e)
                         }
                       }}
                       style={{ height: 34, padding: '0 10px' }}

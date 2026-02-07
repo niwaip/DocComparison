@@ -8,6 +8,7 @@ import { useI18n } from '../../i18n'
 export type ContractRulesModalProps = {
   open: boolean
   onClose: () => void
+  reportError: (e: unknown) => void
 
   templateId: string
   setTemplateId: (v: string) => void
@@ -50,6 +51,7 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
   const {
     open,
     onClose,
+    reportError,
     templateId,
     setTemplateId,
     saveRuleset,
@@ -107,6 +109,7 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
             loadTemplateSnapshot={loadTemplateSnapshot}
             renameTemplate={renameTemplate}
             deleteTemplate={deleteTemplate}
+            reportError={reportError}
             templateId={templateId}
             setTemplateId={setTemplateId}
             newTemplateId={newTemplateId}

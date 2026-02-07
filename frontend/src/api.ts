@@ -79,16 +79,38 @@ const normalizeRuleset = (templateId: string, raw: unknown): Ruleset | null => {
   return { templateId, name, version, referenceData, points }
 }
 
+const buildHttpError = async (res: Response): Promise<Error> => {
+  const base = `${res.status} ${res.statusText}`.trim()
+  let detail = ''
+
+  try {
+    const ct = (res.headers.get('content-type') || '').toLowerCase()
+    if (ct.includes('application/json')) {
+      const data: unknown = await res.json()
+      if (isRecord(data) && typeof data.message === 'string') detail = data.message
+      else if (isRecord(data) && typeof data.detail === 'string') detail = data.detail
+      else detail = JSON.stringify(data)
+    } else {
+      detail = (await res.text()).trim()
+    }
+  } catch {
+    detail = ''
+  }
+
+  if (!detail) return new Error(base)
+  return new Error(`${base}: ${detail}`)
+}
+
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(url, init)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) throw await buildHttpError(res)
   return (await res.json()) as T
 }
 
 const fetchJsonMaybe404 = async <T>(url: string, init?: RequestInit): Promise<T | null> => {
   const res = await fetch(url, init)
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) throw await buildHttpError(res)
   return (await res.json()) as T
 }
 
