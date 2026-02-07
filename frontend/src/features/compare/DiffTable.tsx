@@ -159,7 +159,26 @@ const DiffTable = React.forwardRef<DiffTableHandle, Props>(function DiffTable(pr
           {checkPaneOpen && (
             <div className="diff-grid-head-cell">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minWidth: 0 }}>
-                <div>{t('check.title')}</div>
+                <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                  <div>{t('check.title')}</div>
+                  {checkRun && (checkRun.templateId || checkRun.templateVersion) && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--muted)',
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: 260
+                      }}
+                      title={`${checkRun.templateId || ''}${checkRun.templateVersion ? `@${checkRun.templateVersion}` : ''}`}
+                    >
+                      {checkRun.templateId}
+                      {checkRun.templateVersion ? `@${checkRun.templateVersion}` : ''}
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {checkRun ? (
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>

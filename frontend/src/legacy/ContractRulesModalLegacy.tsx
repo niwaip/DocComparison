@@ -1,5 +1,6 @@
 import React from 'react'
 import type { Block, DetectedField, FieldRuleState, TemplateListItem } from '../domain/types'
+import { escapeRegex } from '../domain/textUtils'
 import { useI18n } from '../i18n'
 
 type Props = {
@@ -130,12 +131,22 @@ export default function ContractRulesModalLegacy(props: Props) {
     const placeholderRe = /_{2,}|＿{2,}|—{2,}|－{2,}|-{2,}/
     const headingishRe =
       /^\s*(?:[一二三四五六七八九十]+\s*[、.．]|第[一二三四五六七八九十]+\s*[条章节]|[（(]?[一二三四五六七八九十]+[)）]|\d+\s*[.．、])\s*[^:：]{1,40}[:：]?\s*$/
+    const labelCore = String(label || '').split('___')[0] || ''
+    const fieldLineRe = labelCore
+      ? new RegExp(
+          `^\\s*(?:[一二三四五六七八九十]+\\s*\\/\\s*\\d+\\s*)?(?:[-–—·•●]\\s*)?(?:(?:\\d+|[一二三四五六七八九十]+)\\s*[.．、)]\\s*|[（(]\\s*(?:\\d+|[一二三四五六七八九十]+)\\s*[）)]\\s*)?${escapeRegex(
+            labelCore
+          )}\\s*[:：]`
+        )
+      : null
     let best: { line: string; score: number } | null = null
     for (const line of lines) {
       if (!line.includes(label)) continue
       let score = 0
       if (placeholderRe.test(line)) score += 10
       if (headingishRe.test(line)) score -= 8
+      if (fieldLineRe && fieldLineRe.test(line)) score += 12
+      if (/[、，,]/.test(line) && /(及|以及|和)/.test(line) && !fieldLineRe?.test(line)) score -= 12
       if (line.length >= 12 && /[。；;]/.test(line)) score += 2
       if (!best || score > best.score) best = { line, score }
     }

@@ -1,6 +1,5 @@
 import sys
 import os
-from docx import Document
 
 # Add backend directory to sys.path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,9 +8,17 @@ sys.path.append(backend_dir)
 
 from app.services.doc_service import DocService
 
+def _data_dir() -> str:
+    env_root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
+    if env_root:
+        return env_root
+    return os.path.join(backend_dir, "data")
+
 def generate_analysis():
-    file_path = r"D:\workspace\DocComparison\买卖合同(销售).docx"
-    output_path = r"D:\workspace\DocComparison\backend\app\python_docx_analysis_sales.txt"
+    default_input = os.path.join(_data_dir(), "samples", "test_doc_sales.docx")
+    file_path = default_input if os.path.exists(default_input) else r"D:\workspace\DocComparison\买卖合同(销售).docx"
+    output_path = os.path.join(_data_dir(), "analysis_outputs", "python_docx_analysis_sales.txt")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
     print(f"Parsing {file_path}...")
     blocks = DocService.parse_docx(file_path)

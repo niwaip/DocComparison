@@ -5,13 +5,23 @@ import os
 
 sys.path.append('/app')
 
+def _backend_dir() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+def _data_dir() -> str:
+    env_root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
+    if env_root:
+        return env_root
+    return os.path.join(_backend_dir(), "data")
+
 def analyze_docx_structure():
-    file_path = "/app/app/test_doc_sales.docx"
-    output_path = "/app/app/python_docx_analysis_sales.txt"
+    file_path = os.path.join(_data_dir(), "samples", "test_doc_sales.docx")
+    output_path = os.path.join(_data_dir(), "analysis_outputs", "python_docx_analysis_sales.txt")
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     print(f"Analyzing {file_path} with python-docx...")
     

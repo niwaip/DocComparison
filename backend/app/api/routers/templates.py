@@ -22,6 +22,26 @@ from app.services.template_store import (
 router = APIRouter()
 
 
+def _max_upload_bytes() -> int:
+    raw = os.getenv("DOC_COMPARISON_MAX_UPLOAD_MB", "").strip()
+    try:
+        mb = int(raw) if raw else 20
+    except Exception:
+        mb = 20
+    if mb < 1:
+        mb = 1
+    return mb * 1024 * 1024
+
+
+def _is_probably_docx(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4)
+        return head[:2] == b"PK"
+    except Exception:
+        return False
+
+
 @router.get("/templates", response_model=List[TemplateListItem])
 def get_templates():
     try:
@@ -37,7 +57,8 @@ async def generate_template(
     version: str = Form(...),
     file: UploadFile = File(...),
 ):
-    if not file.filename.endswith(".docx"):
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".docx"):
         raise HTTPException(status_code=400, detail="Only .docx files are supported")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
@@ -45,6 +66,10 @@ async def generate_template(
         tmp_path = tmp.name
 
     try:
+        if os.path.getsize(tmp_path) > _max_upload_bytes():
+            raise HTTPException(status_code=413, detail="File too large")
+        if not _is_probably_docx(tmp_path):
+            raise HTTPException(status_code=400, detail="Invalid .docx file")
         blocks = DocService.parse_docx(tmp_path)
         signature, _ = compute_signature(blocks)
         snapshot = TemplateSnapshot(
@@ -60,6 +85,8 @@ async def generate_template(
         if get_ruleset(templateId) is None:
             upsert_ruleset(Ruleset(templateId=templateId, name=name, version=version, referenceData={}, points=[]))
         return snapshot
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

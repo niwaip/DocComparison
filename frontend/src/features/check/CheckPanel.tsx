@@ -19,11 +19,30 @@ export default function CheckPanel(props: Props) {
     <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ fontWeight: 800 }}>{t('check.title')}</div>
-        {checkRun.runId && (
-          <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' }}>
-            {checkRun.runId}
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          {(checkRun.templateId || checkRun.templateVersion) && (
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--muted)',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 260
+              }}
+              title={`${checkRun.templateId || ''}${checkRun.templateVersion ? `@${checkRun.templateVersion}` : ''}`}
+            >
+              {checkRun.templateId}
+              {checkRun.templateVersion ? `@${checkRun.templateVersion}` : ''}
+            </div>
+          )}
+          {checkRun.runId && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' }}>
+              {checkRun.runId}
+            </div>
+          )}
+        </div>
       </div>
       <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
         {t('check.summary', {

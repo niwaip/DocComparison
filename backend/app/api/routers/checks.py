@@ -14,6 +14,26 @@ router = APIRouter()
 check_service = CheckService()
 
 
+def _max_upload_bytes() -> int:
+    raw = os.getenv("DOC_COMPARISON_MAX_UPLOAD_MB", "").strip()
+    try:
+        mb = int(raw) if raw else 20
+    except Exception:
+        mb = 20
+    if mb < 1:
+        mb = 1
+    return mb * 1024 * 1024
+
+
+def _is_probably_docx(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4)
+        return head[:2] == b"PK"
+    except Exception:
+        return False
+
+
 @router.get("/check/rulesets", response_model=List[Ruleset])
 def get_rulesets():
     try:
@@ -57,7 +77,8 @@ async def run_checks_docx(
     aiEnabled: bool = Form(False),
     file: UploadFile = File(...),
 ):
-    if not file.filename.endswith(".docx"):
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".docx"):
         raise HTTPException(status_code=400, detail="Only .docx files are supported")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
@@ -65,8 +86,14 @@ async def run_checks_docx(
         tmp_path = tmp.name
 
     try:
+        if os.path.getsize(tmp_path) > _max_upload_bytes():
+            raise HTTPException(status_code=413, detail="File too large")
+        if not _is_probably_docx(tmp_path):
+            raise HTTPException(status_code=400, detail="Invalid .docx file")
         blocks = DocService.parse_docx(tmp_path)
         return check_service.run(templateId, blocks, aiEnabled)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

@@ -1,4 +1,5 @@
 import json
+import html
 import os
 import re
 import uuid
@@ -26,6 +27,31 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _primary_check_runs_dir() -> str:
+    root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
+    if root:
+        d = os.path.join(root, "artifacts", "check_runs")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    artifacts_root = os.getenv("ARTIFACTS_DIR", "").strip()
+    if artifacts_root:
+        d = os.path.join(artifacts_root, "check_runs")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    backend_dir = os.path.abspath(os.path.join(app_dir, ".."))
+    d = os.path.join(backend_dir, "data", "artifacts", "check_runs")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _legacy_check_runs_dir() -> str:
+    app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.path.join(app_dir, "artifacts", "check_runs")
+
+
 def _normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip()
 
@@ -44,13 +70,27 @@ def _has_underline_placeholder(html_fragment: str) -> bool:
         return False
     if re.search(r"text-decoration\s*:\s*underline", html_fragment, flags=re.IGNORECASE) is None:
         return False
-    if re.search(r"text-decoration\s*:\s*underline[^>]*>\s*</span>", html_fragment, flags=re.IGNORECASE):
-        return True
-    if re.search(r"text-decoration\s*:\s*underline[^>]*>\s*&nbsp;\s*</span>", html_fragment, flags=re.IGNORECASE):
-        return True
-    if re.search(r"text-decoration\s*:\s*underline[^>]*>\s*[_\s]{4,}\s*</span>", html_fragment, flags=re.IGNORECASE):
-        return True
-    return False
+    spans = re.findall(
+        r"<span[^>]*text-decoration\s*:\s*underline[^>]*>(.*?)</span>",
+        html_fragment,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not spans:
+        return False
+
+    any_non_placeholder = False
+    all_placeholder = True
+    for raw in spans:
+        s = re.sub(r"<[^>]+>", "", raw)
+        s = html.unescape(s.replace("&nbsp;", " "))
+        if _is_placeholder_text(s):
+            continue
+        all_placeholder = False
+        any_non_placeholder = True
+
+    if any_non_placeholder:
+        return False
+    return all_placeholder
 
 
 def _is_placeholder_text(val: str) -> bool:
@@ -112,6 +152,27 @@ def _value_after_label(text: str, label_regex: Optional[str]) -> Optional[str]:
     return None
 
 
+def _value_after_label_strict(text: str, label_regex: Optional[str]) -> Optional[str]:
+    t = text or ""
+    lines = t.splitlines() or [t]
+    if not label_regex:
+        return None
+
+    section_prefix = r"(?:[一二三四五六七八九十]+\s*/\s*\d+\s*)?"
+    bullet_prefix = r"(?:[-–—·•●]\s*)?"
+    item_prefix = r"(?:(?:\d+|[一二三四五六七八九十]+)\s*[\.、．)]\s*|[（(]\s*(?:\d+|[一二三四五六七八九十]+)\s*[）)]\s*)?"
+    try:
+        pattern = re.compile(rf"^\s*{section_prefix}{bullet_prefix}{item_prefix}(?:{label_regex})\s*[:：]\s*(.*)$")
+    except re.error:
+        pattern = re.compile(rf"^\s*{section_prefix}{bullet_prefix}{item_prefix}(?:{re.escape(str(label_regex))})\s*[:：]\s*(.*)$")
+
+    for line in lines:
+        m = pattern.search(line)
+        if m:
+            return (m.group(1) or "").strip()
+    return None
+
+
 def _find_block(blocks: List[Block], anchor_type: str, anchor_value: str) -> Optional[Block]:
     if anchor_type == "stableKey":
         for b in blocks:
@@ -145,6 +206,64 @@ def _find_block(blocks: List[Block], anchor_type: str, anchor_value: str) -> Opt
         if anchor_value in (b.text or ""):
             return b
     return None
+
+
+def _block_has_label_value(b: Block, label_regex: str) -> bool:
+    return _value_after_label(b.text or "", label_regex) is not None
+
+
+def _block_has_label_value_strict(b: Block, label_regex: str) -> bool:
+    return _value_after_label_strict(b.text or "", label_regex) is not None
+
+
+def _looks_like_section_heading(text: str) -> bool:
+    t = text or ""
+    lines = [x.strip() for x in t.splitlines() if x.strip()]
+    if not lines:
+        return False
+    line = lines[0]
+    if not re.match(r"^(?:第[一二三四五六七八九十]+[章节条]|[一二三四五六七八九十]+[、.．])", line):
+        return False
+    head = re.split(r"[:：]", line, maxsplit=1)[0]
+    return "、" in head
+
+
+def _refine_block_for_label_rules(blocks: List[Block], anchor_block: Block, label_regex: str) -> Block:
+    if not label_regex:
+        return anchor_block
+    if _block_has_label_value_strict(anchor_block, label_regex):
+        return anchor_block
+
+    idx = None
+    for i, b in enumerate(blocks):
+        if b.blockId == anchor_block.blockId:
+            idx = i
+            break
+
+    if idx is not None:
+        for j in range(max(0, idx - 8), min(len(blocks), idx + 13)):
+            cand = blocks[j]
+            if _block_has_label_value_strict(cand, label_regex):
+                return cand
+
+        for j in range(max(0, idx - 8), min(len(blocks), idx + 13)):
+            cand = blocks[j]
+            if _looks_like_section_heading(cand.text or ""):
+                continue
+            if _block_has_label_value(cand, label_regex):
+                return cand
+
+    for cand in blocks:
+        if _block_has_label_value_strict(cand, label_regex):
+            return cand
+
+    for cand in blocks:
+        if _looks_like_section_heading(cand.text or ""):
+            continue
+        if _block_has_label_value(cand, label_regex):
+            return cand
+
+    return anchor_block
 
 
 def _block_has_table(b: Block) -> bool:
@@ -191,7 +310,9 @@ def _parse_money_number(s: str) -> Optional[float]:
 
 def _eval_required_after_colon(rule: CheckRule, block: Block) -> Tuple[CheckStatus, str]:
     label_regex = rule.params.get("labelRegex")
-    val = _value_after_label(block.text or "", label_regex)
+    val = _value_after_label_strict(block.text or "", label_regex)
+    if val is None:
+        val = _value_after_label(block.text or "", label_regex)
     if val is None:
         if _has_underline_placeholder(block.htmlFragment or ""):
             return CheckStatus.FAIL, "字段为空（占位线/下划线未填写）"
@@ -199,7 +320,7 @@ def _eval_required_after_colon(rule: CheckRule, block: Block) -> Tuple[CheckStat
     cleaned = _strip_party_aliases(val)
     if _looks_like_next_label(cleaned):
         cleaned = ""
-    if _is_placeholder_text(cleaned) or _has_underline_placeholder(block.htmlFragment or ""):
+    if _is_placeholder_text(cleaned):
         return CheckStatus.FAIL, "字段为空（占位线/下划线未填写）"
     return CheckStatus.PASS, "已填写"
 
@@ -254,7 +375,10 @@ def _eval_date_format(_: CheckRule, block: Block) -> Tuple[CheckStatus, str]:
 
 def _eval_company_suffix(rule: CheckRule, block: Block) -> Tuple[CheckStatus, str]:
     label_regex = rule.params.get("labelRegex")
-    val = _value_after_label(block.text or "", label_regex) or ""
+    val = _value_after_label_strict(block.text or "", label_regex)
+    if val is None:
+        val = _value_after_label(block.text or "", label_regex)
+    val = val or ""
     val2 = _strip_party_aliases(val)
     val2 = re.sub(r"\s+", "", val2)
     val2 = val2.strip("，,。；;：:()（）")
@@ -444,6 +568,13 @@ class CheckService:
                 item_by_point_id[item.pointId] = item
                 continue
 
+            label_rules = [r for r in (p.rules or []) if r.type in (RuleType.REQUIRED_AFTER_COLON, RuleType.COMPANY_SUFFIX)]
+            for r in label_rules:
+                label_regex = (r.params or {}).get("labelRegex")
+                if label_regex:
+                    b = _refine_block_for_label_rules(right_blocks, b, str(label_regex))
+                    break
+
             ai_prompt_raw = p.ai.prompt if p.ai else None
             needs_table = any(r.type == RuleType.TABLE_SALES_ITEMS for r in (p.rules or []))
             wants_table_context = needs_table or (not (p.rules or []) and bool((ai_prompt_raw or "").strip()))
@@ -494,8 +625,8 @@ class CheckService:
                     status = CheckStatus.FAIL
                     message_parts = ["内容为空（占位线/下划线未填写）"]
                 else:
-                    status = CheckStatus.MANUAL
-                    message_parts = ["未配置规则，需人工复核"]
+                    status = CheckStatus.WARN
+                    message_parts = ["AI审查项目（未配置规则）"]
 
             item = CheckResultItem(
                 pointId=p.pointId,
@@ -577,9 +708,7 @@ class CheckService:
         return resp
 
     def _persist_run(self, resp: CheckRunResponse) -> None:
-        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        root = os.path.join(app_dir, "artifacts", "check_runs")
-        os.makedirs(root, exist_ok=True)
+        root = _primary_check_runs_dir()
         path = os.path.join(root, f"{resp.runId}.json")
         payload = resp.model_dump()
         tmp = path + ".tmp"
@@ -588,8 +717,9 @@ class CheckService:
         os.replace(tmp, path)
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
-        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        path = os.path.join(app_dir, "artifacts", "check_runs", f"{run_id}.json")
+        primary = os.path.join(_primary_check_runs_dir(), f"{run_id}.json")
+        legacy = os.path.join(_legacy_check_runs_dir(), f"{run_id}.json")
+        path = primary if os.path.exists(primary) else legacy
         if not os.path.exists(path):
             return None
         with open(path, "r", encoding="utf-8") as f:

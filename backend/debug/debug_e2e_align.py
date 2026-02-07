@@ -6,8 +6,22 @@ from app.services.doc_service import DocService
 from app.services.diff_service import align_blocks
 
 
+def _backend_dir() -> str:
+    import os
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _data_dir() -> str:
+    import os
+    env_root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
+    if env_root:
+        return env_root
+    return os.path.join(_backend_dir(), "data")
+
+
 def main():
-    left = DocService.parse_docx("/app/app/test_doc_secrecy.docx")
+    import os
+    left = DocService.parse_docx(os.path.join(_data_dir(), "samples", "test_doc_secrecy.docx"))
     right = copy.deepcopy(left)
 
     target = None

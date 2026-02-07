@@ -28,9 +28,11 @@ services:
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-}
       QWEN_MODEL: ${QWEN_MODEL:-}
+      DOC_COMPARISON_DATA_DIR: /app/data
       # Add other env vars as needed
     volumes:
       - ./backend/app:/app/app
+      - ./backend/data:/app/data
     # depends_on:
     #   - redis
 

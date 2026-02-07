@@ -16,16 +16,23 @@ def _sha1(text: str) -> str:
 
 def _store_dir() -> Optional[str]:
     root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
-    if not root:
-        return None
-    d = os.path.join(root, "store")
+    if root:
+        d = os.path.join(root, "store")
+    else:
+        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        backend_dir = os.path.abspath(os.path.join(app_dir, ".."))
+        d = os.path.join(backend_dir, "data", "store")
     os.makedirs(d, exist_ok=True)
     return d
 
 
 def _assets_root_dir() -> str:
+    root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
+    if root:
+        return os.path.join(root, "assets", "template_assets")
     app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    return os.path.join(app_dir, "data", "template_assets")
+    backend_dir = os.path.abspath(os.path.join(app_dir, ".."))
+    return os.path.join(backend_dir, "data", "assets", "template_assets")
 
 
 def _safe_segment(s: str) -> str:
@@ -51,11 +58,8 @@ def save_template_docx(template_id: str, version: str, data: bytes) -> str:
 
 
 def _templates_file_path() -> str:
-    app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     store_dir = _store_dir()
-    if store_dir:
-        return os.path.join(store_dir, "templates.json")
-    return os.path.join(app_dir, "templates.json")
+    return os.path.join(store_dir, "templates.json")
 
 
 def _legacy_templates_file_path() -> str:

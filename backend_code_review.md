@@ -15,21 +15,22 @@
 
 ## 1. 总体评估 (Overall Assessment)
 **核心架构设计合理，但工程化规范较差（"代码裸奔"）。**
-后端采用了标准的 FastAPI + Service Layer 分层架构，逻辑清晰。但是，项目根目录极其混乱，充斥着大量的调试脚本和临时文件，且**完全缺失自动化测试**。这种状态适合个人快速原型的初期，但对于协作开发或生产环境来说，是不及格的。
+后端采用了标准的 FastAPI + Service Layer 分层架构，逻辑清晰。但是，项目曾存在明显的工程化短板：目录污染、数据/产物混入源码目录、缺少回归保障，导致“可跑但不敢改”。目前已完成一批 Quick Wins（调试脚本搬迁、路由按域拆分、建立最小自动化测试），整体正从原型态向可持续迭代收敛。
 
 ## 2. 现状证据 (Evidence)
 
 ### 2.1 目录污染（调试脚本混入源码根目录）
-`backend/app/` 下存在多份调试脚本，且部分脚本硬编码绝对路径或 Docker 路径，难以维护与迁移：
-- `backend/app/debug_blocks.py`（硬编码 `D:\workspace\DocComparison\买卖合同(销售).docx`）
-- `backend/app/debug_raw.py`
-- `backend/app/debug_indent.py`
-- `backend/app/debug_indent_fix.py`
-- `backend/app/debug_numbering.py`
-- `backend/app/debug_sales_indent.py`
-- `backend/app/debug_text_utils.py`
-- `backend/app/debug_e2e_align.py`
-- `backend/app/debug_python_docx.py`（硬编码 `/app/app/test_doc_sales.docx`）
+已整改：调试脚本已从 `backend/app/` 迁移至 `backend/debug/`，不再污染应用代码目录。
+`backend/debug/` 下仍保留调试脚本（仅供开发者手动运行，默认不参与部署/测试）：
+- `backend/debug/debug_blocks.py`
+- `backend/debug/debug_raw.py`
+- `backend/debug/debug_indent.py`
+- `backend/debug/debug_indent_fix.py`
+- `backend/debug/debug_numbering.py`
+- `backend/debug/debug_sales_indent.py`
+- `backend/debug/debug_text_utils.py`
+- `backend/debug/debug_e2e_align.py`
+- `backend/debug/debug_python_docx.py`
 
 ### 2.2 数据/产物混入源码目录
 `backend/app/` 同级存在大量运行产物与样例数据文件（应与源码隔离）：
@@ -38,8 +39,29 @@
 - 解析分析产物：`backend/app/pandoc_*.txt`、`backend/app/python_docx_analysis*.txt`
 - 运行记录：`backend/app/artifacts/check_runs/*.json`
 
+已整改（运行数据路径收口 + 兼容旧路径）：
+- 默认将运行数据写入 `backend/data/`（无需环境变量）。
+- 支持通过环境变量 `DOC_COMPARISON_DATA_DIR` 指定运行数据目录：
+  - store：`${DOC_COMPARISON_DATA_DIR}/store/`（prompts/templates/rulesets）
+  - assets：`${DOC_COMPARISON_DATA_DIR}/assets/`（模板 docx 资产）
+  - artifacts：`${DOC_COMPARISON_DATA_DIR}/artifacts/`（check runs）
+- 兼容策略：如旧路径文件存在，会自动迁移到新路径，避免一次性迁移失败导致不可用。
+
+已完成搬迁（避免继续污染 `backend/app/`）：
+- `prompts.json/templates.json/rulesets.json` 已迁移到 `backend/data/store/`
+- `test_doc*.docx` 已迁移到 `backend/data/samples/`
+- `artifacts/check_runs/*.json` 已迁移到 `backend/data/artifacts/check_runs/`
+
+仍建议后续处理（未强制落地）：
+- 将 `backend/app/` 下残留的工具脚本（如 `export_pandoc.py`）逐步迁移到 `backend/debug/` 或 `backend/scripts/`（避免与应用代码混在一起）。
+
 ### 2.3 路由聚合导致单文件过大
-`backend/app/api/endpoints.py` 约 320 行，单文件承载：文档解析、差异对齐、模板管理、规则集管理、全局 prompt、skills 导入导出、check run 等多类 API。
+已整改：`backend/app/api/endpoints.py` 已改为 router 聚合入口；按域拆分到多个 router 文件，URL 保持不变：
+- documents（parse/diff）：`backend/app/api/routers/documents.py`
+- templates：`backend/app/api/routers/templates.py`
+- prompts：`backend/app/api/routers/prompts.py`
+- skills（import/export）：`backend/app/api/routers/skills.py`
+- checks（rulesets/check run）：`backend/app/api/routers/checks.py`
 
 ### 2.4 安全默认值偏“开发态”
 `backend/app/main.py` 当前 CORS 为全开放：
@@ -64,7 +86,7 @@
     *   **分层清晰**：代码严格遵循了 `api` (路由入口) -> `services` (业务逻辑) -> `models` (数据定义) -> `core` (配置) 的分层结构。
     *   **各司其职**：例如 `endpoints.py` 只负责 HTTP 请求处理，具体的文档解析交给 `DocService`，LLM 交互交给 `LLMService`。这种设计非常符合“高内聚低耦合”的原则。
 *   **改进点**：
-    *   `endpoints.py` 文件开始变得庞大（集成了文档解析、比对、模板管理、Skills 导入导出等所有功能）。建议按功能模块拆分为 `api/v1/documents.py`, `api/v1/skills.py` 等。
+    *   已整改：路由已按域拆分为多个 router 文件，`endpoints.py` 作为聚合入口，避免单文件过大。
 
 ### 3.2 易扩展性 (Extensibility) - ⭐⭐⭐ (3/5)
 *   **优点**：
@@ -82,13 +104,17 @@
 
 ### 3.4 文件组织和命名 (File Organization & Naming) - ⭐ (1/5)
 **这是目前最糟糕的部分。** `backend/app/` 目录就像一个杂乱的储物间。
-*   **混乱的根目录**：`app/` 目录下躺着 **14+ 个** `debug_*.py` 脚本（如 `debug_blocks.py`, `debug_indent.py`）。这些是开发过程中的脚手架，**绝对不应该出现在源码根目录**。
-*   **数据代码混杂**：`prompts.json`, `templates.json`, `rulesets.json` 以及各种 `.txt`, `.docx` 文件直接混在代码里。这些应该移入 `data/` 或 `resources/` 目录。
+*   **目录污染已缓解**：`debug_*.py` 已从 `backend/app/` 迁移到 `backend/debug/`（源码目录洁净度明显改善）。
+*   **数据代码混杂仍需持续治理**：`prompts.json`, `templates.json`, `rulesets.json` 已支持通过 `DOC_COMPARISON_DATA_DIR` 外置存储；但样例 `.docx` 与运行产物目录仍建议继续迁移到独立 data/artifacts 目录。
 *   **不规范的脚本**：`export_pandoc.py`, `decode_native.py` 看起来是工具脚本，却伪装成核心代码文件。
 
 ### 3.5 测试用例 (Test Cases) - 🌑 (0/5)
-*   **完全缺失**：整个后端目录**没有 `tests/` 文件夹**，没有 `pytest` 或 `unittest` 的任何踪迹。
-*   **手动测试依赖**：目前的“测试”完全依赖那堆 `debug_*.py` 脚本进行手动运行和 `print` 输出。这在现代软件工程中是不可接受的，意味着每次发布都需要人工回归所有功能，极其脆弱。
+*   **已整改（最小测试体系已建立）**：已新增 `backend/tests/`，并提供可重复执行的自动化测试用例（基于 `unittest`，不依赖额外测试框架安装）。
+*   **覆盖范围（第一批）**：
+    *   `skill_bundle` 导入导出（包括冲突分支）
+    *   `template_store` / `ruleset_store` / `prompt_store` 的基本读写回归
+    *   路由存在性回归（防止拆分路由后 URL 丢失）
+*   **仍建议**：后续若 CI/团队习惯偏向 `pytest`，可再切换或双栈支持；但当前以“能稳定跑起来”为第一优先级。
 
 ## 4. 可落地整改方案 (Action Plan)
 
@@ -101,7 +127,7 @@
 2) 明确运行数据目录（data/artifacts 与源码分离的约定）
 
 #### 阶段 B：短期（1 周，目标：可重构）
-1) 建立最小测试体系（pytest + 关键用例）
+1) 建立最小测试体系（unittest/pytest + 关键用例）
 2) 路由按域拆分（降低单文件耦合）
 3) 收紧“开发态默认值”（至少把 CORS 与配置外置）
 
@@ -125,11 +151,14 @@
 - 兼容策略：迁移期先尝试读取新路径；若不存在则读取旧路径并写回新路径，避免一次性迁移失败导致不可用。
 
 #### B1. 建立最小测试体系
-- 增加 `backend/tests/` 并引入 pytest。
+- 增加 `backend/tests/` 并引入最小自动化测试（当前采用 `unittest`）。
 - 第一批必须覆盖（优先级从高到低）：
   1) `skill_bundle` 导入导出（包括校验失败分支）
   2) `template_store` / `ruleset_store` 基本读写
   3) `check_service` 的“空 ruleset / 基础规则”路径
+-
+- 一键运行示例：
+  - `python -m unittest discover -s tests -p "test_*.py" -v`
 
 #### B2. 路由拆分（以域为单位）
 - 将 `backend/app/api/endpoints.py` 拆分为多个 router 文件，例如：
@@ -152,9 +181,13 @@
 - 运行产物（check_runs 等）落到独立目录，不污染源码目录。
 
 #### 阶段 B（测试与重构）
-- 存在 `backend/tests/`，并能一键运行测试（例如 `pytest`）。
+- 存在 `backend/tests/`，并能一键运行测试（例如 `unittest` 或 `pytest`）。
 - 至少包含 8～15 个可重复执行的自动化测试用例，覆盖导入导出与存储读写的关键路径。
 - `endpoints.py` 不再作为“全功能聚合”，路由按域拆分完成。
+
+现状对齐：
+- 已实现 `backend/tests/` 与可一键运行的 `unittest` 测试命令。
+- 已完成路由按域拆分（documents/templates/prompts/skills/checks），并通过路由存在性测试兜底。
 
 #### 阶段 C（可部署与可观测）
 - 配置（尤其是 CORS、数据目录、模型 key）均通过环境变量/配置文件管理，不需要改代码切换环境。
