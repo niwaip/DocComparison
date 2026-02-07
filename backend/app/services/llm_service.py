@@ -1,4 +1,7 @@
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ModuleNotFoundError:
+    OpenAI = None
 from app.core.config import settings
 from app.models import Block, CheckAiResult
 from typing import List, Dict, Any
@@ -8,10 +11,13 @@ import re
 class LLMService:
     def __init__(self):
         self.api_key, self.base_url, self.model = self._resolve_client_config()
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url if self.base_url else None,
-        )
+        if OpenAI is None:
+            self.client = None
+        else:
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url if self.base_url else None,
+            )
 
     def _resolve_client_config(self) -> tuple[str, str, str]:
         provider = (getattr(settings, "LLM_PROVIDER", "") or "").strip().lower()
@@ -85,6 +91,9 @@ Query: {query}
 
 Please provide a detailed risk analysis with citations."""
 
+        if not self.api_key or self.client is None:
+            return {"analysis": "AI skipped: LLM client not configured", "trace_id": ""}
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -108,7 +117,7 @@ Please provide a detailed risk analysis with citations."""
         rule_status: str,
         rule_message: str,
     ) -> CheckAiResult:
-        if not self.api_key:
+        if not self.api_key or self.client is None:
             return CheckAiResult(raw="AI skipped: LLM API key not configured")
 
         system_prompt = (
@@ -158,7 +167,7 @@ Please provide a detailed risk analysis with citations."""
         return CheckAiResult(status=status, summary=summary, confidence=confidence_f, raw=content2)
 
     def check_points_batch(self, points: List[Dict[str, Any]]) -> Dict[str, CheckAiResult]:
-        if not self.api_key:
+        if not self.api_key or self.client is None:
             out: Dict[str, CheckAiResult] = {}
             for p in points:
                 pid = str(p.get("pointId") or "")
@@ -239,7 +248,7 @@ Please provide a detailed risk analysis with citations."""
         return out
 
     def global_review(self, payload: Dict[str, Any], prompt: str) -> str:
-        if not self.api_key:
+        if not self.api_key or self.client is None:
             return "AI skipped: LLM API key not configured"
 
         system_prompt = (

@@ -5,7 +5,24 @@ from typing import Dict, Any, List, Optional
 from app.models import Ruleset
 
 
+def _store_dir() -> Optional[str]:
+    root = os.getenv("DOC_COMPARISON_DATA_DIR", "").strip()
+    if not root:
+        return None
+    d = os.path.join(root, "store")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def _rulesets_file_path() -> str:
+    app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    store_dir = _store_dir()
+    if store_dir:
+        return os.path.join(store_dir, "rulesets.json")
+    return os.path.join(app_dir, "rulesets.json")
+
+
+def _legacy_rulesets_file_path() -> str:
     app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return os.path.join(app_dir, "rulesets.json")
 
@@ -173,6 +190,15 @@ def _default_rulesets_payload() -> Dict[str, Any]:
 def ensure_rulesets_file() -> None:
     path = _rulesets_file_path()
     if os.path.exists(path):
+        return
+    legacy = _legacy_rulesets_file_path()
+    if legacy != path and os.path.exists(legacy):
+        with open(legacy, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
         return
     payload = _default_rulesets_payload()
     tmp = path + ".tmp"
