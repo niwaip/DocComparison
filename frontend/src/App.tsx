@@ -1,433 +1,256 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import ContractRulesModal, { DetectedField, FieldRuleState } from './ContractRulesModal'
-
-// --- Interfaces ---
-
-interface BlockMeta {
-  headingLevel?: number
-  pageNumber?: number
-}
-
-interface Block {
-  blockId: string
-  kind: string
-  structurePath: string
-  stableKey: string
-  text: string
-  htmlFragment: string
-  meta: BlockMeta
-}
-
-interface AlignmentRow {
-  rowId: string
-  kind: 'matched' | 'inserted' | 'deleted' | 'changed'
-  leftBlockId: string | null
-  rightBlockId: string | null
-  diffHtml?: string
-  leftDiffHtml?: string
-  rightDiffHtml?: string
-}
-
-interface CheckEvidence {
-  rightBlockId?: string | null
-  excerpt?: string | null
-}
-
-interface CheckAiResult {
-  status?: 'pass' | 'fail' | 'warn' | 'manual' | 'error' | 'skipped' | null
-  summary?: string | null
-  confidence?: number | null
-  raw?: string | null
-}
-
-interface CheckResultItem {
-  pointId: string
-  title: string
-  severity: 'high' | 'medium' | 'low'
-  status: 'pass' | 'fail' | 'warn' | 'manual' | 'error' | 'skipped'
-  message: string
-  evidence: CheckEvidence
-  ai?: CheckAiResult | null
-}
-
-interface CheckRunResponse {
-  runId: string
-  templateId: string
-  templateVersion: string
-  summary: any
-  items: CheckResultItem[]
-}
-
-interface TemplateListItem {
-  templateId: string
-  name: string
-  versions: string[]
-}
-
-interface TemplateMatchItem {
-  templateId: string
-  name: string
-  version: string
-  score: number
-}
-
-interface TemplateMatchResponse {
-  best?: TemplateMatchItem | null
-  candidates: TemplateMatchItem[]
-}
-
-interface GlobalPromptConfig {
-  defaultPrompt: string
-  byTemplateId: Record<string, string>
-}
-
-interface GlobalAnalyzeResponse {
-  raw: string
-}
-
-const hashString = (input: string) => {
-  let h = 5381
-  for (let i = 0; i < input.length; i++) {
-    h = ((h << 5) + h) ^ input.charCodeAt(i)
-  }
-  const n = h >>> 0
-  return n.toString(16).padStart(8, '0')
-}
-
-const escapeRegex = (s: string) => (s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-const decodeHtmlLite = (s: string) => {
-  return (s || '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-}
+import React, { useCallback, useEffect, useMemo, useReducer } from 'react'
+import ContractRulesModal from './ContractRulesModal'
+import { api } from './api'
+import { detectFieldsFromBlock } from './domain/fieldDetection'
+import { escapeRegex, hashString } from './domain/textUtils'
+import { I18nProvider, createT, normalizeLang, type Lang } from './i18n'
+import type {
+  AlignmentRow,
+  Block,
+  CheckRunResponse,
+  DetectedField,
+  FieldRuleState,
+  GlobalAnalyzeResponse,
+  GlobalPromptConfig,
+  TemplateListItem,
+  TemplateMatchResponse
+} from './domain/types'
 
 const TEMPLATE_MATCH_THRESHOLD = 0.84
 
-const normalizeFieldLabel = (raw: string) => {
-  let s = (raw || '').trim()
-  s = s.replace(/^\s*\d+\s*[.．、]?\s*/g, '')
-  s = s.replace(/^\s*[一二三四五六七八九十]+\s*[、.．]\s*/g, '')
-  const idx1 = s.indexOf('：')
-  const idx2 = s.indexOf(':')
-  const idx = idx1 >= 0 ? idx1 : idx2
-  if (idx >= 0) s = s.slice(0, idx)
-  s = s.trim().replace(/\s+/g, ' ')
-  return s
-}
-
-const detectFieldsFromBlock = (b: Block): DetectedField[] => {
-  const sp = b.structurePath
-  if (!sp) return []
-  const out: DetectedField[] = []
-
-  const html = b.htmlFragment || ''
-  const looksTableByText = () => {
-    const t = b.text || ''
-    if (!t) return false
-    const lines = t
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean)
-    if (lines.length < 2) return false
-    const headerLike = lines.find((x) => /产品名称|型号|数量|单价|总价|合计金额/.test(x))
-    if (!headerLike) return false
-    const cols = headerLike.split(/\t+|\s{2,}/).map((x) => x.trim()).filter(Boolean)
-    return cols.length >= 3
-  }
-
-  const isTableLike = b.kind === 'table' || /table/i.test(b.kind || '') || /<(table|tr|td)[\s>]/i.test(html) || looksTableByText()
-  if (isTableLike) {
-    const fieldId = `table::${sp}`
-    out.push({ fieldId, structurePath: sp, kind: 'table', label: '表格', labelRegex: '' })
-    return out
-  }
-
-  const orderedLabels: string[] = []
-  const labelSeen = new Set<string>()
-  const addLabel = (lab: string) => {
-    const s = (lab || '').trim().replace(/\s+/g, ' ')
-    if (!s) return
-    if (labelSeen.has(s)) return
-    labelSeen.add(s)
-    orderedLabels.push(s)
-  }
-
-  const underlineSentenceShortLabels = new Set<string>()
-  const knownLabels = new Set<string>(['运输方式', '交货地点', '交货日期', '最终用户', '签订日期', '签订地点', '合同编号', '买方', '卖方'])
-  const isProbablyHeadingLabel = (lab: string) => {
-    if (!lab) return true
-    if (knownLabels.has(lab)) return false
-    if (/附件/.test(lab)) return true
-    if (/[、，,]/.test(lab) && /(及|以及|和)/.test(lab)) return true
-    if (/(条|章节|部分|目录|说明|定义)/.test(lab) && lab.length >= 4) return true
-    return false
-  }
-
-  const stripTags = (s: string) => decodeHtmlLite((s || '').replace(/<[^>]+>/g, ''))
-  const isUnderlinePlaceholder = (inner: string) => {
-    const t = stripTags(inner).replace(/\s+/g, '')
-    if (!t) return true
-    return /^[_＿—－-]{2,}$/.test(t)
-  }
-  const addSentenceLabel = (beforeText: string, afterText: string) => {
-    const b = (beforeText || '').replace(/\s+/g, ' ').trim()
-    const a = (afterText || '').replace(/\s+/g, ' ').trim()
-    const aCore = a.replace(/[，,。.;；:：\s]/g, '')
-    if (!aCore) {
-      const lab = normalizeFieldLabel(b)
-      if (lab && !isProbablyHeadingLabel(lab)) addLabel(lab)
-      return
-    }
-    const sentence = `${b}___${a}`.replace(/\s+/g, ' ').trim()
-    if (!sentence) return
-    const shortLab = normalizeFieldLabel(b)
-    if (shortLab && shortLab.length <= 12 && !isProbablyHeadingLabel(shortLab)) underlineSentenceShortLabels.add(shortLab)
-    const idx = sentence.indexOf('___')
-    if (idx >= 0) {
-      const markers: number[] = []
-      const re = /(^|[\s：:。；;])(\d{1,2})\s*[.．、]/g
-      for (const m of sentence.matchAll(re)) {
-        const i = (m.index ?? 0) + (m[1] ? m[1].length : 0)
-        markers.push(i)
-      }
-      if (markers.length > 0) {
-        let start = 0
-        for (const i of markers) {
-          if (i <= idx) start = i
-          else break
-        }
-        let end = sentence.length
-        for (const i of markers) {
-          if (i > idx) {
-            end = i
-            break
-          }
-        }
-        const seg = sentence.slice(start, end).trim()
-        if (seg && seg.length <= 160) {
-          addLabel(seg)
-          return
-        }
-      }
-    }
-    if (sentence.length > 160) return
-    addLabel(sentence)
-  }
-  const spanUnderlineRe = /<p[^>]*>([\s\S]*?)<span[^>]*text-decoration\s*:\s*underline[^>]*>([\s\S]*?)<\/span>([\s\S]*?)<\/p>/gi
-  for (const m of html.matchAll(spanUnderlineRe)) {
-    const beforeText = stripTags(m[1] || '')
-    const underlineInner = m[2] || ''
-    const afterText = stripTags(m[3] || '')
-    if (!isUnderlinePlaceholder(underlineInner)) continue
-    if (afterText.trim()) {
-      addSentenceLabel(beforeText, afterText)
-      continue
-    }
-    const lab = normalizeFieldLabel(beforeText)
-    if (lab && !isProbablyHeadingLabel(lab)) addLabel(lab)
-  }
-  const uUnderlineRe = /<p[^>]*>([\s\S]*?)<u[^>]*>([\s\S]*?)<\/u>([\s\S]*?)<\/p>/gi
-  for (const m of html.matchAll(uUnderlineRe)) {
-    const beforeText = stripTags(m[1] || '')
-    const underlineInner = m[2] || ''
-    const afterText = stripTags(m[3] || '')
-    if (!isUnderlinePlaceholder(underlineInner)) continue
-    if (afterText.trim()) {
-      addSentenceLabel(beforeText, afterText)
-      continue
-    }
-    const lab = normalizeFieldLabel(beforeText)
-    if (lab && !isProbablyHeadingLabel(lab)) addLabel(lab)
-  }
-
-  const lines = (b.text || '').split('\n')
-  const isSectionHeadingLine = (line: string) => {
-    const s = (line || '').trim()
-    if (!s) return false
-    if (/^\s*[一二三四五六七八九十]+\s*[、，,．.。]/.test(s)) return true
-    if (/^\s*第[一二三四五六七八九十]+\s*[条章节]/.test(s)) return true
-    if (/^\s*[（(]?[一二三四五六七八九十]+[)）]/.test(s)) return true
-    return false
-  }
-  const isNumberedTitleWithColonOnly = (line: string) => {
-    const s = (line || '').trim()
-    if (!s) return false
-    return /^\s*(?:[一二三四五六七八九十]+\s*[、.．]|第[一二三四五六七八九十]+\s*[条章节]|[（(]?[一二三四五六七八九十]+[)）]|\d+\s*[.．、])\s*[^:：]{1,30}[:：]\s*$/.test(s)
-  }
-
-  for (const line of lines) {
-    const raw = (line || '').trim()
-    if (!raw) continue
-    if (!/[:：]/.test(raw)) continue
-    if (isSectionHeadingLine(raw)) continue
-    const m = raw.match(/^\s*(?:\d+\s*[.．、]\s*)?(.{1,40}?)([:：])(.*)$/)
-    if (!m) continue
-    const after = (m[3] || '').trim()
-    const lab = normalizeFieldLabel(m[1] || '')
-    if (!lab) continue
-    if (lab.length > 12) continue
-    if (/[、,，]/.test(lab) && /(及|以及|和)/.test(lab)) continue
-    if (underlineSentenceShortLabels.has(lab)) continue
-    const phAnyRe = /_{3,}|＿{3,}|—{3,}|－{3,}|-{3,}/g
-    const phMatches = Array.from(raw.matchAll(phAnyRe))
-    if (phMatches.length > 0) {
-      const firstIdx = phMatches[0].index ?? -1
-      const firstToken = phMatches[0][0] || ''
-      if (firstIdx >= 0) {
-        const afterPh = raw.slice(firstIdx + firstToken.length)
-        const cleanedAfterPh = afterPh.replace(phAnyRe, '').trim().replace(/[，,。.;；:：]+$/g, '').trim()
-        const multi = phMatches.length >= 2
-        const hasTextAfterPh = cleanedAfterPh.length > 0
-        if (multi || hasTextAfterPh) continue
-      }
-    }
-    if (after === '' && isNumberedTitleWithColonOnly(raw) && !knownLabels.has(lab)) continue
-    if (after === '' && isProbablyHeadingLabel(lab) && !knownLabels.has(lab)) continue
-    addLabel(lab)
-  }
-
-  for (const line of lines) {
-    const s = line || ''
-    const phRe = /_{3,}|＿{3,}|—{3,}|－{3,}|-{3,}/g
-    const matches = Array.from(s.matchAll(phRe))
-    if (matches.length === 0) continue
-
-    const firstIdx = matches[0].index ?? -1
-    const firstToken = matches[0][0] || ''
-    if (firstIdx < 0) continue
-    const before = s.slice(0, firstIdx)
-    const after = s.slice(firstIdx + firstToken.length)
-    const beforeHasColon = before.includes('：') || before.includes(':')
-
-    if (beforeHasColon) {
-      const cleanedAfter = after.replace(phRe, '').trim().replace(/[，,。.;；:：]+$/g, '').trim()
-      const multi = matches.length >= 2
-      const hasTextAfter = cleanedAfter.length > 0
-      if (multi || hasTextAfter) {
-        const sentence = s.trim().replace(/\s+/g, ' ').replace(phRe, '___').trim()
-        if (!sentence) continue
-        if (sentence.length > 160) continue
-        addLabel(sentence)
-        continue
-      }
-      const lab = normalizeFieldLabel(before)
-      if (!lab) continue
-      if (lab.length > 12) continue
-      if (isProbablyHeadingLabel(lab)) continue
-      addLabel(lab)
-      continue
-    }
-
-    const cleanedAfter = after.replace(phRe, '').trim().replace(/[，,。.;；:：]+$/g, '').trim()
-    const multi = matches.length >= 2
-    const hasTextAfter = cleanedAfter.length > 0
-    if (multi || hasTextAfter) {
-      const sentence = s.trim().replace(/\s+/g, ' ').replace(phRe, '___').trim()
-      if (!sentence) continue
-      if (sentence.length > 140) continue
-      addLabel(sentence)
-      continue
-    }
-
-    const lab = normalizeFieldLabel(before)
-    if (!lab) continue
-    if (lab.length > 12) continue
-    if (isProbablyHeadingLabel(lab)) continue
-    addLabel(lab)
-  }
-
-  const sentenceShortLabels = new Set<string>()
-  for (const lab of orderedLabels) {
-    const idx = lab.indexOf('___')
-    if (idx < 0) continue
-    const before = lab.slice(0, idx)
-    const short = normalizeFieldLabel(before)
-    if (short && short.length <= 12 && !isProbablyHeadingLabel(short)) sentenceShortLabels.add(short)
-  }
-
-  const finalLabels = orderedLabels.filter((lab) => {
-    if (lab.includes('___')) return true
-    if (sentenceShortLabels.has(lab)) return false
-    return true
-  })
-
-  for (const lab of finalLabels) {
-    const fieldId = `field::${sp}::${hashString(lab)}`
-    out.push({ fieldId, structurePath: sp, kind: 'field', label: lab, labelRegex: escapeRegex(lab) })
-  }
-  return out
-}
-
 // --- Component ---
 
+type AppState = {
+  lang: Lang
+  leftFile: File | null
+  rightFile: File | null
+
+  leftBlocks: Block[]
+  rightBlocks: Block[]
+
+  diffRows: AlignmentRow[]
+  loading: boolean
+  error: string
+  showOnlyDiff: boolean
+  activeDiffIndex: number
+  activeRowId: string | null
+  configOpen: boolean
+  templateId: string
+  aiCheckEnabled: boolean
+  aiAnalyzeEnabled: boolean
+  uploadPaneCollapsed: boolean
+  checkLoading: boolean
+  checkRun: CheckRunResponse | null
+  checkFilter: 'all' | 'issues'
+  checkPaneOpen: boolean
+  theme: 'dark' | 'light'
+  rulesetLoading: boolean
+
+  templateBlocks: Block[]
+  templateIndex: TemplateListItem[]
+  templateIndexLoading: boolean
+  newTemplateId: string
+  newTemplateName: string
+  newTemplateVersion: string
+  templateDraftFile: File | null
+  fieldRules: Record<string, FieldRuleState>
+  blockPrompts: Record<string, string>
+
+  globalPromptCfg: GlobalPromptConfig | null
+  globalPromptLoading: boolean
+  globalPromptDefaultDraft: string
+  globalPromptTemplateDraft: string
+  globalAnalyzeLoading: boolean
+  globalAnalyzeRaw: string | null
+  globalAnalyzeShowRaw: boolean
+  globalPaneOpen: boolean
+}
+
+type AppAction =
+  | { type: 'set'; key: keyof AppState; value: unknown }
+  | { type: 'update'; key: keyof AppState; updater: (prev: unknown) => unknown }
+
+const appInitialState = (): AppState => {
+  const lang = normalizeLang((typeof window !== 'undefined' ? window.localStorage?.getItem('doccmp.lang') : null) || undefined)
+  const t = createT(lang)
+  return {
+    lang,
+    leftFile: null,
+    rightFile: null,
+
+  leftBlocks: [],
+  rightBlocks: [],
+
+  diffRows: [],
+  loading: false,
+  error: '',
+  showOnlyDiff: false,
+  activeDiffIndex: 0,
+  activeRowId: null,
+  configOpen: false,
+  templateId: 'sales_contract_cn',
+  aiCheckEnabled: false,
+  aiAnalyzeEnabled: false,
+  uploadPaneCollapsed: false,
+  checkLoading: false,
+  checkRun: null,
+  checkFilter: 'all',
+  checkPaneOpen: false,
+  theme: 'dark',
+  rulesetLoading: false,
+
+  templateBlocks: [],
+  templateIndex: [],
+  templateIndexLoading: false,
+    newTemplateId: 'sales_contract_cn',
+    newTemplateName: t('template.defaultName.sales'),
+    newTemplateVersion: new Date().toISOString().slice(0, 10),
+  templateDraftFile: null,
+  fieldRules: {},
+  blockPrompts: {},
+
+  globalPromptCfg: null,
+  globalPromptLoading: false,
+  globalPromptDefaultDraft: '',
+  globalPromptTemplateDraft: '',
+  globalAnalyzeLoading: false,
+  globalAnalyzeRaw: null,
+    globalAnalyzeShowRaw: false,
+    globalPaneOpen: false
+  }
+}
+
+const appReducer = (state: AppState, action: AppAction): AppState => {
+  if (action.type === 'set') {
+    if (state[action.key] === action.value) return state
+    return { ...state, [action.key]: action.value as any } as AppState
+  }
+  if (action.type === 'update') {
+    const prev = state[action.key]
+    const next = action.updater(prev) as any
+    if (prev === next) return state
+    return { ...state, [action.key]: next } as AppState
+  }
+  return state
+}
+
 function App() {
-  const [leftFile, setLeftFile] = useState<File | null>(null)
-  const [rightFile, setRightFile] = useState<File | null>(null)
-  
-  const [leftBlocks, setLeftBlocks] = useState<Block[]>([])
-  const [rightBlocks, setRightBlocks] = useState<Block[]>([])
-  
-  const [diffRows, setDiffRows] = useState<AlignmentRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [showOnlyDiff, setShowOnlyDiff] = useState(false)
-  const [activeDiffIndex, setActiveDiffIndex] = useState(0)
-  const [activeRowId, setActiveRowId] = useState<string | null>(null)
-  const [configOpen, setConfigOpen] = useState(false)
-  const [templateId, setTemplateId] = useState('sales_contract_cn')
-  const [aiCheckEnabled, setAiCheckEnabled] = useState(false)
-  const [aiAnalyzeEnabled, setAiAnalyzeEnabled] = useState(false)
-  const [uploadPaneCollapsed, setUploadPaneCollapsed] = useState(false)
-  const [checkLoading, setCheckLoading] = useState(false)
-  const [checkRun, setCheckRun] = useState<CheckRunResponse | null>(null)
-  const [checkFilter, setCheckFilter] = useState<'all' | 'issues'>('all')
-  const [checkPaneOpen, setCheckPaneOpen] = useState(false)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-  const [rulesetLoading, setRulesetLoading] = useState(false)
-  const [templateBlocks, setTemplateBlocks] = useState<Block[]>([])
-  const [templateIndex, setTemplateIndex] = useState<TemplateListItem[]>([])
-  const [templateIndexLoading, setTemplateIndexLoading] = useState(false)
-  const [newTemplateId, setNewTemplateId] = useState('sales_contract_cn')
-  const [newTemplateName, setNewTemplateName] = useState('买卖合同（销售）')
-  const [newTemplateVersion, setNewTemplateVersion] = useState(new Date().toISOString().slice(0, 10))
-  const [templateDraftFile, setTemplateDraftFile] = useState<File | null>(null)
-  const [fieldRules, setFieldRules] = useState<Record<string, FieldRuleState>>({})
-  const [blockPrompts, setBlockPrompts] = useState<Record<string, string>>({})
-  const [globalPromptCfg, setGlobalPromptCfg] = useState<GlobalPromptConfig | null>(null)
-  const [globalPromptLoading, setGlobalPromptLoading] = useState(false)
-  const [globalPromptDefaultDraft, setGlobalPromptDefaultDraft] = useState('')
-  const [globalPromptTemplateDraft, setGlobalPromptTemplateDraft] = useState('')
-  const [globalAnalyzeLoading, setGlobalAnalyzeLoading] = useState(false)
-  const [globalAnalyzeRaw, setGlobalAnalyzeRaw] = useState<string | null>(null)
-  const [globalAnalyzeShowRaw, setGlobalAnalyzeShowRaw] = useState(false)
-  const [globalPaneOpen, setGlobalPaneOpen] = useState(false)
+  const [state, dispatch] = useReducer(appReducer, undefined, appInitialState)
+  const {
+    lang,
+    leftFile,
+    rightFile,
+    leftBlocks,
+    rightBlocks,
+    diffRows,
+    loading,
+    error,
+    showOnlyDiff,
+    activeDiffIndex,
+    activeRowId,
+    configOpen,
+    templateId,
+    aiCheckEnabled,
+    aiAnalyzeEnabled,
+    uploadPaneCollapsed,
+    checkLoading,
+    checkRun,
+    checkFilter,
+    checkPaneOpen,
+    theme,
+    rulesetLoading,
+    templateBlocks,
+    templateIndex,
+    templateIndexLoading,
+    newTemplateId,
+    newTemplateName,
+    newTemplateVersion,
+    templateDraftFile,
+    fieldRules,
+    blockPrompts,
+    globalPromptCfg,
+    globalPromptLoading,
+    globalPromptDefaultDraft,
+    globalPromptTemplateDraft,
+    globalAnalyzeLoading,
+    globalAnalyzeRaw,
+    globalAnalyzeShowRaw,
+    globalPaneOpen
+  } = state
+
+  const makeSetter = <K extends keyof AppState>(key: K) => {
+    return (valueOrUpdater: AppState[K] | ((prev: AppState[K]) => AppState[K])) => {
+      if (typeof valueOrUpdater === 'function') {
+        dispatch({ type: 'update', key, updater: valueOrUpdater as any } as AppAction)
+      } else {
+        dispatch({ type: 'set', key, value: valueOrUpdater } as AppAction)
+      }
+    }
+  }
+
+  const setLeftFile = makeSetter('leftFile')
+  const setRightFile = makeSetter('rightFile')
+  const setLeftBlocks = makeSetter('leftBlocks')
+  const setRightBlocks = makeSetter('rightBlocks')
+  const setDiffRows = makeSetter('diffRows')
+  const setLoading = makeSetter('loading')
+  const setError = makeSetter('error')
+  const setShowOnlyDiff = makeSetter('showOnlyDiff')
+  const setActiveDiffIndex = makeSetter('activeDiffIndex')
+  const setActiveRowId = makeSetter('activeRowId')
+  const setConfigOpen = makeSetter('configOpen')
+  const setTemplateId = makeSetter('templateId')
+  const setAiCheckEnabled = makeSetter('aiCheckEnabled')
+  const setAiAnalyzeEnabled = makeSetter('aiAnalyzeEnabled')
+  const setUploadPaneCollapsed = makeSetter('uploadPaneCollapsed')
+  const setCheckLoading = makeSetter('checkLoading')
+  const setCheckRun = makeSetter('checkRun')
+  const setCheckFilter = makeSetter('checkFilter')
+  const setCheckPaneOpen = makeSetter('checkPaneOpen')
+  const setTheme = makeSetter('theme')
+  const setRulesetLoading = makeSetter('rulesetLoading')
+  const setTemplateBlocks = makeSetter('templateBlocks')
+  const setTemplateIndex = makeSetter('templateIndex')
+  const setTemplateIndexLoading = makeSetter('templateIndexLoading')
+  const setNewTemplateId = makeSetter('newTemplateId')
+  const setNewTemplateName = makeSetter('newTemplateName')
+  const setNewTemplateVersion = makeSetter('newTemplateVersion')
+  const setTemplateDraftFile = makeSetter('templateDraftFile')
+  const setFieldRules = makeSetter('fieldRules')
+  const setBlockPrompts = makeSetter('blockPrompts')
+  const setGlobalPromptCfg = makeSetter('globalPromptCfg')
+  const setGlobalPromptLoading = makeSetter('globalPromptLoading')
+  const setGlobalPromptDefaultDraft = makeSetter('globalPromptDefaultDraft')
+  const setGlobalPromptTemplateDraft = makeSetter('globalPromptTemplateDraft')
+  const setGlobalAnalyzeLoading = makeSetter('globalAnalyzeLoading')
+  const setGlobalAnalyzeRaw = makeSetter('globalAnalyzeRaw')
+  const setGlobalAnalyzeShowRaw = makeSetter('globalAnalyzeShowRaw')
+  const setGlobalPaneOpen = makeSetter('globalPaneOpen')
+  const setLang = makeSetter('lang')
+
+  const t = useMemo(() => createT(lang), [lang])
+  const setLangInProvider = useCallback((next: Lang) => {
+    dispatch({ type: 'set', key: 'lang', value: next } as AppAction)
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
 
   useEffect(() => {
+    try {
+      window.localStorage?.setItem('doccmp.lang', lang)
+    } catch {
+    }
+  }, [lang])
+
+  useEffect(() => {
     let cancelled = false
     const load = async () => {
       setTemplateIndexLoading(true)
       try {
-        const res = await fetch('/api/templates')
-        if (!res.ok) return
-        const items = await res.json()
+        const next = await api.templates.list()
         if (cancelled) return
-        if (!Array.isArray(items)) return
-        const next: TemplateListItem[] = items
-          .filter((x: any) => x && typeof x.templateId === 'string')
-          .map((x: any) => ({
-            templateId: String(x.templateId),
-            name: typeof x.name === 'string' ? x.name : String(x.templateId),
-            versions: Array.isArray(x.versions) ? x.versions.map((v: any) => String(v)) : []
-          }))
         setTemplateIndex(next)
       } catch {
         if (cancelled) return
@@ -446,13 +269,13 @@ function App() {
   }, [templateIndex])
 
   const contractTypeOptions = useMemo(() => {
-    const blank = { templateId: '', name: '（未匹配模板：使用通用提示词）' }
+    const blank = { templateId: '', name: t('side.contractType.unmatched') }
     const base = templateIndex.map((t) => ({ templateId: t.templateId, name: t.name || t.templateId }))
     if (!templateId) return [blank, ...base]
     const exists = templateIndex.some((t) => t.templateId === templateId)
     if (exists) return [blank, ...base]
     return [blank, { templateId, name: templateNameById.get(templateId) || templateId }, ...base]
-  }, [templateIndex, templateId, templateNameById])
+  }, [templateIndex, templateId, templateNameById, t])
 
   useEffect(() => {
     if (!globalPromptCfg) return
@@ -526,43 +349,32 @@ function App() {
   }
 
   const loadTemplateBlocksForCompare = async (tid: string) => {
-    const res = await fetch(`/api/templates/${encodeURIComponent(tid)}/latest`)
-    if (!res.ok) throw new Error(`加载标准模板失败：${res.statusText}`)
-    const snapshot = await res.json()
-    const blocks = snapshot && Array.isArray(snapshot.blocks) ? (snapshot.blocks as Block[]) : []
-    const name = typeof snapshot?.name === 'string' ? snapshot.name : ''
-    return { blocks, name }
+    try {
+      return await api.templates.getLatest(tid)
+    } catch (e: any) {
+      throw new Error(t('error.template.loadStandard', { message: e?.message || String(e) }))
+    }
   }
 
   const parseFile = async (file: File, side: 'left' | 'right') => {
     setLoading(true)
     setError('')
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const res = await fetch('/api/parse', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!res.ok) {
-        throw new Error(`解析${side === 'left' ? '左侧' : '右侧'}文件失败：${res.statusText}`)
+      let blocks: Block[] = []
+      try {
+        blocks = await api.parseDoc(file)
+      } catch (e: any) {
+        throw new Error(t('error.file.parse', {
+          side: side === 'left' ? t('side.leftShort') : t('side.rightShort'),
+          message: e?.message || String(e)
+        }))
       }
-
-      const blocks: Block[] = await res.json()
       if (side === 'left') setLeftBlocks(blocks)
       else {
         setRightBlocks(blocks)
         try {
-          const m = await fetch('/api/templates/match', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ blocks })
-          })
-          if (m.ok) {
-            const obj: TemplateMatchResponse = await m.json()
-            const best = obj?.best || null
+          const obj: TemplateMatchResponse = await api.templates.match(blocks)
+          const best = obj?.best || null
             const score = typeof best?.score === 'number' ? best.score : null
             const tid = typeof best?.templateId === 'string' ? best.templateId : ''
             if (score !== null && tid && score >= TEMPLATE_MATCH_THRESHOLD) {
@@ -570,15 +382,12 @@ function App() {
               if (leftBlocks.length === 0) {
                 const { blocks: tplBlocks, name } = await loadTemplateBlocksForCompare(tid)
                 setLeftBlocks(tplBlocks)
-                const label = (name || tid || '标准模板').trim()
-                setLeftFile(new File([], `标准模板-${label}.docx`, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
+                const label = (name || tid || t('label.standardTemplate')).trim()
+                setLeftFile(new File([], t('filename.standardTemplate', { label }), { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
               }
             } else {
               setTemplateId('')
             }
-          } else {
-            setTemplateId('')
-          }
         } catch {
           setTemplateId('')
         }
@@ -592,22 +401,12 @@ function App() {
   }
 
   const runDiffCore = async (left: Block[], right: Block[], templateIdForCheck?: string) => {
-    const res = await fetch('/api/diff', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        left_blocks: left,
-        right_blocks: right
-      })
-    })
-
-    if (!res.ok) {
-      throw new Error(`对比失败：${res.statusText}`)
+    let rows: AlignmentRow[] = []
+    try {
+      rows = await api.diff(left, right)
+    } catch (e: any) {
+      throw new Error(t('error.diff', { message: e?.message || String(e) }))
     }
-
-    const rows: AlignmentRow[] = await res.json()
     setDiffRows(rows)
     setActiveDiffIndex(0)
     setActiveRowId(null)
@@ -630,7 +429,7 @@ function App() {
   const compareUsingTemplate = async (tid: string) => {
     if (!tid) return
     if (rightBlocks.length === 0) {
-      setError('请先解析右侧文件。')
+      setError(t('error.needParseRight'))
       return
     }
     setLoading(true)
@@ -638,8 +437,8 @@ function App() {
     try {
       const { blocks, name } = await loadTemplateBlocksForCompare(tid)
       setLeftBlocks(blocks)
-      const label = (name || tid || '标准模板').trim()
-      setLeftFile(new File([], `标准模板-${label}.docx`, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
+      const label = (name || tid || t('label.standardTemplate')).trim()
+      setLeftFile(new File([], t('filename.standardTemplate', { label }), { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
       await runDiffCore(blocks, rightBlocks, tid)
     } catch (err: any) {
       console.error(err)
@@ -651,7 +450,7 @@ function App() {
 
   const handleDiff = async () => {
     if (rightBlocks.length === 0) {
-      setError('请先解析右侧文件。')
+      setError(t('error.needParseRight'))
       return
     }
     if (leftBlocks.length === 0) {
@@ -659,7 +458,7 @@ function App() {
         await compareUsingTemplate(templateId)
         return
       }
-      setError('请先解析左侧文件，或先匹配/选择标准模板。')
+      setError(t('error.needParseLeftOrTemplate'))
       return
     }
 
@@ -733,13 +532,13 @@ function App() {
           {side === 'left' ? '📄' : '📝'}
         </div>
         <div className="upload-info">
-          <h3>{side === 'left' ? '原始文档' : '修订文档'}</h3>
+          <h3>{side === 'left' ? t('upload.leftTitle') : t('upload.rightTitle')}</h3>
           <p className={fileName ? 'file-name' : 'placeholder'}>
-            {fileName || '点击上传 .docx'}
+            {fileName || t('upload.clickUpload')}
           </p>
           {blocks.length > 0 && (
             <div className="status-badge">
-              ✓ 已解析 {blocks.length} 个分块
+              {t('upload.parsedBlocks', { count: blocks.length })}
             </div>
           )}
         </div>
@@ -779,23 +578,13 @@ function App() {
   const runChecks = useCallback(async (tid: string, blocks: Block[]): Promise<CheckRunResponse | null> => {
     if (!tid) return null
     if (blocks.length === 0) {
-      setError('请先解析右侧合同文件。')
+      setError(t('error.needParseRightContract'))
       return null
     }
     setCheckLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/check/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: tid,
-          rightBlocks: blocks,
-          aiEnabled: aiCheckEnabled
-        })
-      })
-      if (!res.ok) throw new Error(`检查失败：${res.statusText}`)
-      const payload: CheckRunResponse = await res.json()
+      const payload: CheckRunResponse = await api.checkRun(tid, blocks, aiCheckEnabled)
       setCheckRun(payload)
       return payload
     } catch (err: any) {
@@ -837,37 +626,26 @@ function App() {
           basePrompt = (globalPromptCfg?.byTemplateId?.[templateId] || globalPromptCfg?.defaultPrompt || '').trim()
         } else {
           try {
-            const res0 = await fetch('/api/prompts/global')
-            if (res0.ok) {
-              const cfg0: GlobalPromptConfig = await res0.json()
-              setGlobalPromptCfg(cfg0)
-              basePrompt = (cfg0?.byTemplateId?.[templateId] || cfg0?.defaultPrompt || '').trim()
-            }
+            const cfg0: GlobalPromptConfig = await api.prompts.getGlobal()
+            setGlobalPromptCfg(cfg0)
+            basePrompt = (cfg0?.byTemplateId?.[templateId] || cfg0?.defaultPrompt || '').trim()
           } catch {
             basePrompt = ''
           }
         }
         if (basePrompt) {
           promptOverride =
-            `背景：左侧可能是“范本/空白模板”，左侧出现的下划线或空白属于占位符。对比与分析时不要把左侧空白当成问题或矛盾。请优先判断右侧是否仍为空白模板；若右侧已填写，重点检查右侧必填项完整性、一致性以及数值/日期/金额计算逻辑，并给出可执行的修改建议。` +
-            `\n\n` +
-            basePrompt
+            `${t('ai.globalAnalyze.templateNote')}\n\n${basePrompt}`
         }
       }
 
-      const res = await fetch('/api/analyze/global', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId,
-          rightBlocks,
-          diffRows: rows,
-          checkRun: cr,
-          promptOverride
-        })
+      const payload: GlobalAnalyzeResponse = await api.analyzeGlobal({
+        templateId,
+        rightBlocks,
+        diffRows: rows,
+        checkRun: cr,
+        promptOverride
       })
-      if (!res.ok) throw new Error(`全局分析失败：${res.statusText}`)
-      const payload: GlobalAnalyzeResponse = await res.json()
       setGlobalAnalyzeRaw(payload.raw || '')
     } catch (err: any) {
       console.error(err)
@@ -882,10 +660,13 @@ function App() {
     setError('')
     try {
       setTemplateDraftFile(null)
-      const res = await fetch(`/api/templates/${encodeURIComponent(tid)}/latest`)
-      if (!res.ok) throw new Error(`加载模板失败：${res.statusText}`)
-      const snapshot = await res.json()
-      const blocks = snapshot && Array.isArray(snapshot.blocks) ? (snapshot.blocks as Block[]) : []
+      let blocks: Block[] = []
+      try {
+        const out = await api.templates.getLatest(tid)
+        blocks = out.blocks
+      } catch (e: any) {
+        throw new Error(t('error.template.load', { message: e?.message || String(e) }))
+      }
       setTemplateBlocks(blocks)
 
       const detected = blocks.flatMap((b) => detectFieldsFromBlock(b))
@@ -893,11 +674,9 @@ function App() {
 
       let ruleset: any | null = null
       try {
-        const resRuleset = await fetch(`/api/check/rulesets/${encodeURIComponent(tid)}`)
-        if (resRuleset.ok) ruleset = await resRuleset.json()
-        else if (resRuleset.status !== 404) throw new Error(`加载规则集失败：${resRuleset.statusText}`)
+        ruleset = await api.rulesets.get(tid)
       } catch (e: any) {
-        if (!String(e?.message || '').includes('404')) throw e
+        throw new Error(t('error.ruleset.load', { message: e?.message || String(e) }))
       }
 
       if (!ruleset) {
@@ -997,16 +776,18 @@ function App() {
       let versionOverride: string | null = null
 
       if (templateDraftFile) {
-        if (!draftTemplateId) throw new Error('templateId 不能为空')
-        const formData = new FormData()
-        formData.append('templateId', draftTemplateId)
-        formData.append('name', draftName || draftTemplateId)
-        formData.append('version', draftVersion || today)
-        formData.append('file', templateDraftFile)
-        const resTpl = await fetch('/api/templates/generate', { method: 'POST', body: formData })
-        if (!resTpl.ok) throw new Error(`保存模板失败：${resTpl.statusText}`)
-        const snapshot = await resTpl.json()
-        if (snapshot && Array.isArray(snapshot.blocks)) setTemplateBlocks(snapshot.blocks as Block[])
+        if (!draftTemplateId) throw new Error(t('error.templateId.required'))
+        try {
+          const snapshot = await api.templates.generate({
+            templateId: draftTemplateId,
+            name: draftName || draftTemplateId,
+            version: draftVersion || today,
+            file: templateDraftFile
+          })
+          if (snapshot && Array.isArray(snapshot.blocks)) setTemplateBlocks(snapshot.blocks as Block[])
+        } catch (e: any) {
+          throw new Error(t('error.template.save', { message: e?.message || String(e) }))
+        }
         await reloadTemplateIndex()
         setTemplateDraftFile(null)
         setTemplateId(draftTemplateId)
@@ -1017,11 +798,9 @@ function App() {
 
       let existing: any | null = null
       try {
-        const res = await fetch(`/api/check/rulesets/${encodeURIComponent(targetTemplateId)}`)
-        if (res.ok) existing = await res.json()
-        else if (res.status !== 404) throw new Error(`加载规则集失败：${res.statusText}`)
+        existing = await api.rulesets.get(targetTemplateId)
       } catch (e: any) {
-        if (!String(e?.message || '').includes('404')) throw e
+        throw new Error(t('error.ruleset.load', { message: e?.message || String(e) }))
       }
 
       const existingPoints: any[] = Array.isArray(existing?.points) ? existing.points : []
@@ -1062,7 +841,11 @@ function App() {
         if (rules.length === 0) continue
 
         const isDate = f.kind === 'field' && (st.dateMonth || st.dateFormat || f.label.includes('日期'))
-        const titleFallback = f.kind === 'table' ? '表格检查' : isDate ? `${f.label} 日期校验` : `${f.label} 请填写`
+        const titleFallback = f.kind === 'table'
+          ? t('ruleset.title.tableCheck')
+          : isDate
+            ? (lang === 'zh-CN' ? `${f.label}${t('ruleset.title.dateCheckSuffix')}` : `${f.label} ${t('ruleset.title.dateCheckSuffix')}`)
+            : (lang === 'zh-CN' ? `${f.label}${t('ruleset.title.fillSuffix')}` : `${f.label} ${t('ruleset.title.fillSuffix')}`)
         const title = titleFallback.slice(0, 60)
         const prefix = f.kind === 'table' ? 'table' : 'field'
         const pointId = `${prefix}.${hashString(fieldId)}`
@@ -1084,7 +867,7 @@ function App() {
         const prompt = (rawPrompt || '').trim()
         if (!prompt) continue
         if (!spSet.has(sp)) continue
-        const title = ((prompt.split('\n')[0] || '').trim() || '分块 AI 检查').slice(0, 60)
+        const title = ((prompt.split('\n')[0] || '').trim() || t('ruleset.title.blockAiCheck')).slice(0, 60)
         const pointId = `blockai.${hashString(sp)}`
         generated.push({
           pointId,
@@ -1096,7 +879,7 @@ function App() {
         })
       }
 
-      const name = (existing?.name || nameOverride || templateNameById.get(targetTemplateId) || targetTemplateId || '未命名规则集').trim()
+      const name = (existing?.name || nameOverride || templateNameById.get(targetTemplateId) || targetTemplateId || t('ruleset.unnamed')).trim()
       const version = (existing?.version || versionOverride || today).trim()
       const payload = {
         templateId: targetTemplateId,
@@ -1106,13 +889,11 @@ function App() {
         points: [...kept, ...generated]
       }
 
-      const res2 = await fetch(`/api/check/rulesets/${encodeURIComponent(targetTemplateId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      if (!res2.ok) throw new Error(`保存规则集失败：${res2.statusText}`)
-      await res2.json()
+      try {
+        await api.rulesets.put(targetTemplateId, payload)
+      } catch (e: any) {
+        throw new Error(t('error.ruleset.save', { message: e?.message || String(e) }))
+      }
     } catch (err: any) {
       console.error(err)
       setError(err?.message || String(err))
@@ -1124,21 +905,10 @@ function App() {
   const reloadTemplateIndex = async () => {
     setTemplateIndexLoading(true)
     try {
-      const res = await fetch('/api/templates')
-      if (!res.ok) throw new Error(`加载模板库失败：${res.statusText}`)
-      const items = await res.json()
-      if (!Array.isArray(items)) return
-      const next: TemplateListItem[] = items
-        .filter((x: any) => x && typeof x.templateId === 'string')
-        .map((x: any) => ({
-          templateId: String(x.templateId),
-          name: typeof x.name === 'string' ? x.name : String(x.templateId),
-          versions: Array.isArray(x.versions) ? x.versions.map((v: any) => String(v)) : []
-        }))
-      setTemplateIndex(next)
+      setTemplateIndex(await api.templates.list())
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || String(err))
+      setError(t('error.templateIndex.load', { message: err?.message || String(err) }))
     } finally {
       setTemplateIndexLoading(false)
     }
@@ -1151,12 +921,11 @@ function App() {
       setFieldRules({})
       setBlockPrompts({})
       setTemplateDraftFile(file)
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/parse', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error(`解析模板失败：${res.statusText}`)
-      const blocks = await res.json()
-      if (Array.isArray(blocks)) setTemplateBlocks(blocks as Block[])
+      try {
+        setTemplateBlocks(await api.parseDoc(file))
+      } catch (e: any) {
+        throw new Error(t('error.template.parse', { message: e?.message || String(e) }))
+      }
     } catch (err: any) {
       console.error(err)
       setError(err?.message || String(err))
@@ -1169,15 +938,13 @@ function App() {
     setGlobalPromptLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/prompts/global')
-      if (!res.ok) throw new Error(`加载全局提示词失败：${res.statusText}`)
-      const cfg: GlobalPromptConfig = await res.json()
+      const cfg: GlobalPromptConfig = await api.prompts.getGlobal()
       setGlobalPromptCfg(cfg)
       setGlobalPromptDefaultDraft(cfg?.defaultPrompt || '')
       setGlobalPromptTemplateDraft(cfg?.byTemplateId?.[templateId] || '')
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || String(err))
+      setError(t('error.globalPrompt.load', { message: err?.message || String(err) }))
     } finally {
       setGlobalPromptLoading(false)
     }
@@ -1190,11 +957,8 @@ function App() {
       let baseByTemplateId: Record<string, string> = { ...(globalPromptCfg?.byTemplateId || {}) }
       if (!globalPromptCfg) {
         try {
-          const res0 = await fetch('/api/prompts/global')
-          if (res0.ok) {
-            const cfg0: GlobalPromptConfig = await res0.json()
-            baseByTemplateId = { ...(cfg0?.byTemplateId || {}) }
-          }
+          const cfg0: GlobalPromptConfig = await api.prompts.getGlobal()
+          baseByTemplateId = { ...(cfg0?.byTemplateId || {}) }
         } catch {
           baseByTemplateId = {}
         }
@@ -1206,19 +970,13 @@ function App() {
       const trimmed = globalPromptTemplateDraft.trim()
       if (trimmed) next.byTemplateId[templateId] = trimmed
       else delete next.byTemplateId[templateId]
-      const res = await fetch('/api/prompts/global', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(next)
-      })
-      if (!res.ok) throw new Error(`保存全局提示词失败：${res.statusText}`)
-      const saved: GlobalPromptConfig = await res.json()
+      const saved: GlobalPromptConfig = await api.prompts.putGlobal(next)
       setGlobalPromptCfg(saved)
       setGlobalPromptDefaultDraft(saved?.defaultPrompt || '')
       setGlobalPromptTemplateDraft(saved?.byTemplateId?.[templateId] || '')
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || String(err))
+      setError(t('error.globalPrompt.save', { message: err?.message || String(err) }))
     } finally {
       setGlobalPromptLoading(false)
     }
@@ -1240,11 +998,16 @@ function App() {
     return (
       <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontWeight: 800 }}>检查结果</div>
+          <div style={{ fontWeight: 800 }}>{t('check.title')}</div>
           {checkRun.runId && <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' }}>{checkRun.runId}</div>}
         </div>
         <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-          通过 {checkRun.summary?.counts?.pass ?? 0} · 不通过 {checkRun.summary?.counts?.fail ?? 0} · 警告 {checkRun.summary?.counts?.warn ?? 0} · 需人工 {checkRun.summary?.counts?.manual ?? 0}
+          {t('check.summary', {
+            pass: checkRun.summary?.counts?.pass ?? 0,
+            fail: checkRun.summary?.counts?.fail ?? 0,
+            warn: checkRun.summary?.counts?.warn ?? 0,
+            manual: checkRun.summary?.counts?.manual ?? 0
+          })}
         </div>
         {items.length > 0 ? (
           <div style={{ marginTop: 10, display: 'grid', gap: 8, paddingRight: 2 }}>
@@ -1274,7 +1037,7 @@ function App() {
           </div>
         ) : (
           <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)' }}>
-            {checkFilter === 'issues' ? '未发现问题。' : '无检查项。'}
+            {checkFilter === 'issues' ? t('check.empty.issues') : t('check.empty.all')}
           </div>
         )}
       </div>
@@ -1288,7 +1051,13 @@ function App() {
     if (!raw) {
       return (
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          {diffRows.length === 0 ? '请先完成对比。' : !aiAnalyzeEnabled ? 'AI分析已关闭。' : globalAnalyzeLoading ? '分析中...' : '暂无结果。'}
+          {diffRows.length === 0
+            ? t('globalAnalyze.empty.needDiff')
+            : !aiAnalyzeEnabled
+              ? t('globalAnalyze.empty.disabled')
+              : globalAnalyzeLoading
+                ? t('globalAnalyze.empty.loading')
+                : t('globalAnalyze.empty.none')}
         </div>
       )
     }
@@ -1315,11 +1084,11 @@ function App() {
 
       const humanizeText = (s: any) => {
         let out = String(s || '')
-        out = out.replace(/\bblockai\.[a-z0-9]+\b/gi, '该分块')
-        out = out.replace(/\btable\.[a-z0-9]+\b/gi, '该表格')
-        out = out.replace(/\bfield\.[a-z0-9]+\b/gi, '该字段')
-        out = out.replace(/\br_(\d{4})\b/gi, (_m, g1) => `第${parseInt(String(g1), 10)}行`)
-        out = out.replace(/\bb_(\d{4})\b/gi, (_m, g1) => `分块${parseInt(String(g1), 10)}`)
+        out = out.replace(/\bblockai\.[a-z0-9]+\b/gi, t('ref.thisBlock'))
+        out = out.replace(/\btable\.[a-z0-9]+\b/gi, t('ref.thisTable'))
+        out = out.replace(/\bfield\.[a-z0-9]+\b/gi, t('ref.thisField'))
+        out = out.replace(/\br_(\d{4})\b/gi, (_m, g1) => t('label.row', { n: parseInt(String(g1), 10) }))
+        out = out.replace(/\bb_(\d{4})\b/gi, (_m, g1) => t('label.block', { n: parseInt(String(g1), 10) }))
         out = out.replace(/\s{2,}/g, ' ')
         return out
       }
@@ -1328,12 +1097,12 @@ function App() {
       const v = String(level || '').toLowerCase()
       const cfg =
         v === 'high'
-          ? { bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.38)', fg: 'rgba(248,113,113,1)', text: '高风险' }
+          ? { bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.38)', fg: 'rgba(248,113,113,1)', text: t('risk.high') }
           : v === 'medium'
-            ? { bg: 'rgba(245,158,11,0.16)', bd: 'rgba(245,158,11,0.40)', fg: 'rgba(251,191,36,1)', text: '中风险' }
+            ? { bg: 'rgba(245,158,11,0.16)', bd: 'rgba(245,158,11,0.40)', fg: 'rgba(251,191,36,1)', text: t('risk.medium') }
             : v === 'low'
-              ? { bg: 'rgba(34,197,94,0.14)', bd: 'rgba(34,197,94,0.38)', fg: 'rgba(74,222,128,1)', text: '低风险' }
-              : { bg: 'rgba(255,255,255,0.06)', bd: 'var(--control-border)', fg: 'var(--muted)', text: String(level || '—') }
+              ? { bg: 'rgba(34,197,94,0.14)', bd: 'rgba(34,197,94,0.38)', fg: 'rgba(74,222,128,1)', text: t('risk.low') }
+              : { bg: 'rgba(255,255,255,0.06)', bd: 'var(--control-border)', fg: 'var(--muted)', text: String(level || t('evidence.none')) }
       return <span style={{ ...chipStyle, background: cfg.bg, borderColor: cfg.bd, color: cfg.fg }}>{cfg.text}</span>
     }
 
@@ -1341,12 +1110,12 @@ function App() {
       const v = String(p || '').toLowerCase()
       const cfg =
         v === 'critical' || v === 'high'
-          ? { bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.38)', fg: 'rgba(248,113,113,1)', text: v === 'critical' ? '紧急' : '高' }
+          ? { bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.38)', fg: 'rgba(248,113,113,1)', text: v === 'critical' ? t('priority.critical') : t('priority.high') }
           : v === 'medium'
-            ? { bg: 'rgba(245,158,11,0.16)', bd: 'rgba(245,158,11,0.40)', fg: 'rgba(251,191,36,1)', text: '中' }
+            ? { bg: 'rgba(245,158,11,0.16)', bd: 'rgba(245,158,11,0.40)', fg: 'rgba(251,191,36,1)', text: t('priority.medium') }
             : v === 'low'
-              ? { bg: 'rgba(34,197,94,0.14)', bd: 'rgba(34,197,94,0.38)', fg: 'rgba(74,222,128,1)', text: '低' }
-              : { bg: 'rgba(255,255,255,0.06)', bd: 'var(--control-border)', fg: 'var(--muted)', text: String(p || '—') }
+              ? { bg: 'rgba(34,197,94,0.14)', bd: 'rgba(34,197,94,0.38)', fg: 'rgba(74,222,128,1)', text: t('priority.low') }
+              : { bg: 'rgba(255,255,255,0.06)', bd: 'var(--control-border)', fg: 'var(--muted)', text: String(p || t('evidence.none')) }
       return <span style={{ ...chipStyle, background: cfg.bg, borderColor: cfg.bd, color: cfg.fg }}>{cfg.text}</span>
     }
 
@@ -1358,12 +1127,12 @@ function App() {
 
     const labelFor = (id: string) => {
       const mRow = id.match(/^r_(\d{4})$/i)
-      if (mRow) return `第${parseInt(mRow[1], 10)}行`
+      if (mRow) return t('label.row', { n: parseInt(mRow[1], 10) })
       const mBlock = id.match(/^b_(\d{4})$/i)
-      if (mBlock) return `分块${parseInt(mBlock[1], 10)}`
-      if (/^table\./i.test(id)) return '表格'
-      if (/^field\./i.test(id)) return '字段'
-      if (/^blockai\./i.test(id)) return '分块'
+      if (mBlock) return t('label.block', { n: parseInt(mBlock[1], 10) })
+      if (/^table\./i.test(id)) return t('label.tableShort')
+      if (/^field\./i.test(id)) return t('label.fieldShort')
+      if (/^blockai\./i.test(id)) return t('label.blockShort')
       return id
     }
 
@@ -1377,7 +1146,9 @@ function App() {
     const evidenceChips = (ids: any) => {
       const arr = Array.isArray(ids) ? ids : []
       const clean = arr.map((x) => String(x)).filter(Boolean)
-      if (clean.length === 0) return <span style={{ color: 'var(--muted)' }}>—</span>
+      if (clean.length === 0) return <span style={{ color: 'var(--muted)' }}>{t('evidence.none')}</span>
+
+      const wrapId = (label: string, id: string) => (lang === 'zh-CN' ? `${label}（${id}）` : `${label} (${id})`)
 
       const tooltipFor = (id: string) => {
         if (/^r_\d+$/i.test(id)) {
@@ -1385,17 +1156,17 @@ function App() {
           if (!r) return id
           const ltxt = r.leftBlockId ? clip(getBlock(leftBlocks, r.leftBlockId)?.text || '', 140) : ''
           const rtxt = r.rightBlockId ? clip(getBlock(rightBlocks, r.rightBlockId)?.text || '', 140) : ''
-          const parts = [`${labelFor(id)}（${id}）`]
-          if (ltxt) parts.push(`左：${ltxt}`)
-          if (rtxt) parts.push(`右：${rtxt}`)
+          const parts = [wrapId(labelFor(id), id)]
+          if (ltxt) parts.push(t('evidence.left', { text: ltxt }))
+          if (rtxt) parts.push(t('evidence.right', { text: rtxt }))
           return parts.join('\n')
         }
 
         const it = (checkRun?.items || []).find((x) => x.pointId === id) || null
         if (it) {
-          const parts = [`${labelFor(id)}（${id}）`, clip(it.title || '', 80), clip(it.message || '', 180)]
+          const parts = [wrapId(labelFor(id), id), clip(it.title || '', 80), clip(it.message || '', 180)]
           const ex = clip(it.evidence?.excerpt || '', 200)
-          if (ex) parts.push(`摘录：${ex}`)
+          if (ex) parts.push(t('evidence.excerpt', { text: ex }))
           return parts.filter(Boolean).join('\n')
         }
 
@@ -1403,19 +1174,23 @@ function App() {
         if (r) {
           const ltxt = r.leftBlockId ? clip(getBlock(leftBlocks, r.leftBlockId)?.text || '', 140) : ''
           const rtxt = r.rightBlockId ? clip(getBlock(rightBlocks, r.rightBlockId)?.text || '', 140) : ''
-          const parts = [`${labelFor(id)}（${id}）`, `所在行：${labelFor(r.rowId)}（${r.rowId}）`]
-          if (ltxt) parts.push(`左：${ltxt}`)
-          if (rtxt) parts.push(`右：${rtxt}`)
+          const parts = [
+            wrapId(labelFor(id), id),
+            t('evidence.rowAt', { label: labelFor(r.rowId), id: r.rowId })
+          ]
+          if (ltxt) parts.push(t('evidence.left', { text: ltxt }))
+          if (rtxt) parts.push(t('evidence.right', { text: rtxt }))
           return parts.join('\n')
         }
 
         const b = getBlock(leftBlocks, id) || getBlock(rightBlocks, id)
         if (b) {
           const t = clip(b.text || '', 220)
-          return t ? `${labelFor(id)}（${id}）\n${t}` : `${labelFor(id)}（${id}）`
+          const head = wrapId(labelFor(id), id)
+          return t ? `${head}\n${t}` : head
         }
 
-        return `${labelFor(id)}（${id}）`
+        return wrapId(labelFor(id), id)
       }
 
       const jumpToEvidence = (id: string) => {
@@ -1496,14 +1271,14 @@ function App() {
         <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 900 }}>总体结论</div>
+            <div style={{ fontWeight: 900 }}>{t('globalAnalyze.conclusion')}</div>
             {riskBadge(overallRiskLevel)}
             {confidence !== undefined && confidence !== null && (
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>置信度：{Number(confidence).toFixed(2)}</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.confidence', { value: Number(confidence).toFixed(2) })}</span>
             )}
           </div>
           <button className="btn-secondary" onClick={() => setGlobalAnalyzeShowRaw((v) => !v)}>
-            {globalAnalyzeShowRaw ? '隐藏原始JSON' : '查看原始JSON'}
+            {globalAnalyzeShowRaw ? t('globalAnalyze.raw.hide') : t('globalAnalyze.raw.show')}
           </button>
         </div>
 
@@ -1515,14 +1290,14 @@ function App() {
 
         {keyFindings.length > 0 && (
           <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--control-bg)' }}>
-            <div style={{ padding: 12, fontWeight: 900 }}>关键问题</div>
+            <div style={{ padding: 12, fontWeight: 900 }}>{t('globalAnalyze.keyFindings')}</div>
             <div style={{ overflowX: 'auto' }}>
               <table style={tableStyle}>
                 <thead>
                   <tr>
-                    <th style={{ ...thStyle, width: 180 }}>问题</th>
-                    <th style={thStyle}>说明</th>
-                    <th style={{ ...thStyle, width: 220 }}>证据</th>
+                    <th style={{ ...thStyle, width: 180 }}>{t('globalAnalyze.table.issue')}</th>
+                    <th style={thStyle}>{t('globalAnalyze.table.detail')}</th>
+                    <th style={{ ...thStyle, width: 220 }}>{t('globalAnalyze.table.evidence')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1541,14 +1316,14 @@ function App() {
 
         {improvementSuggestions.length > 0 && (
           <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--control-bg)' }}>
-            <div style={{ padding: 12, fontWeight: 900 }}>修改建议</div>
+            <div style={{ padding: 12, fontWeight: 900 }}>{t('globalAnalyze.suggestions')}</div>
             <div style={{ overflowX: 'auto' }}>
               <table style={tableStyle}>
                 <thead>
                   <tr>
-                    <th style={{ ...thStyle, width: 72 }}>优先级</th>
-                    <th style={{ ...thStyle, width: 180 }}>建议</th>
-                    <th style={thStyle}>内容</th>
+                    <th style={{ ...thStyle, width: 72 }}>{t('globalAnalyze.table.priority')}</th>
+                    <th style={{ ...thStyle, width: 180 }}>{t('globalAnalyze.table.suggestion')}</th>
+                    <th style={thStyle}>{t('globalAnalyze.table.content')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1567,7 +1342,7 @@ function App() {
 
         {missingInformation.length > 0 && (
           <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'var(--control-bg)' }}>
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>缺失信息（需补全）</div>
+            <div style={{ fontWeight: 900, marginBottom: 10 }}>{t('globalAnalyze.missing')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {missingInformation.map((x: any, idx: number) => (
                 <span key={String(x || idx)} style={chipStyle}>{humanizeText(x || '')}</span>
@@ -1578,7 +1353,7 @@ function App() {
 
         {sections.length > 0 && (
           <details style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'var(--control-bg)', padding: 12 }} open>
-            <summary style={{ cursor: 'pointer', fontWeight: 900 }}>按章节/主题查看</summary>
+            <summary style={{ cursor: 'pointer', fontWeight: 900 }}>{t('globalAnalyze.sections')}</summary>
             <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(560px, 1fr))', gap: 10 }}>
               {sections.map((s: any, idx: number) => (
                 <div key={String(s?.title || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
@@ -1586,12 +1361,12 @@ function App() {
                     <div style={{ fontWeight: 900 }}>{humanizeText(s?.title || '')}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       {riskBadge(s?.riskLevel)}
-                      {Array.isArray(s?.evidenceIds) && s.evidenceIds.length > 0 && <span style={{ fontSize: 12, color: 'var(--muted)' }}>证据：{s.evidenceIds.length}</span>}
+                      {Array.isArray(s?.evidenceIds) && s.evidenceIds.length > 0 && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.evidenceCount', { count: s.evidenceIds.length })}</span>}
                     </div>
                   </div>
                   {Array.isArray(s?.findings) && s.findings.length > 0 && (
                     <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>问题</div>
+                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.issue')}</div>
                       <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
                         {s.findings.map((x: any, i2: number) => (
                           <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
@@ -1601,7 +1376,7 @@ function App() {
                   )}
                   {Array.isArray(s?.suggestions) && s.suggestions.length > 0 && (
                     <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>建议</div>
+                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.suggestion')}</div>
                       <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
                         {s.suggestions.map((x: any, i2: number) => (
                           <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
@@ -1620,7 +1395,7 @@ function App() {
 
         {blockReviews.length > 0 && (
           <details style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'var(--control-bg)', padding: 12 }}>
-            <summary style={{ cursor: 'pointer', fontWeight: 900 }}>逐块检查（抽样/重点块）</summary>
+            <summary style={{ cursor: 'pointer', fontWeight: 900 }}>{t('globalAnalyze.blocks')}</summary>
             <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(560px, 1fr))', gap: 10 }}>
               {blockReviews.slice(0, 60).map((b: any, idx: number) => (
                 <div key={String(b?.blockId || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
@@ -1632,7 +1407,7 @@ function App() {
                   </div>
                   {Array.isArray(b?.issues) && b.issues.length > 0 && (
                     <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>问题</div>
+                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.issue')}</div>
                       <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
                         {b.issues.map((x: any, i2: number) => (
                           <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
@@ -1642,7 +1417,7 @@ function App() {
                   )}
                   {Array.isArray(b?.suggestions) && b.suggestions.length > 0 && (
                     <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>建议</div>
+                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.suggestion')}</div>
                       <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
                         {b.suggestions.map((x: any, i2: number) => (
                           <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
@@ -1653,7 +1428,7 @@ function App() {
                 </div>
               ))}
               {blockReviews.length > 60 && (
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>已展示前 60 条逐块结果。</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.shownFirst', { count: 60 })}</div>
               )}
             </div>
           </details>
@@ -1673,6 +1448,7 @@ function App() {
   }
 
   return (
+    <I18nProvider lang={lang} setLang={setLangInProvider}>
     <div className="app-container" style={checkPaneOpen ? { maxWidth: 2200 } : undefined}>
       <style>{`
         :root{
@@ -2267,23 +2043,31 @@ function App() {
       <div className="header">
         <h1>
           <div className="header-logo">D</div>
-          文档对比
+          {t('app.title')}
         </h1>
         <div className="toolbar">
           <button
             className="btn-secondary"
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            title={theme === 'dark' ? '切换到亮色系' : '切换到暗色系'}
+            title={theme === 'dark' ? t('toolbar.theme.toLight') : t('toolbar.theme.toDark')}
           >
-            {theme === 'dark' ? '☀️ 亮色' : '🌙 暗色'}
+            {theme === 'dark' ? t('toolbar.theme.light') : t('toolbar.theme.dark')}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => setLang((prev) => (prev === 'zh-CN' ? 'en-US' : 'zh-CN'))}
+            title={t('toolbar.lang.switchTitle')}
+            style={{ height: 34, padding: '0 10px' }}
+          >
+            🌐
           </button>
           <button
             className="btn-secondary"
             onClick={() => { setConfigOpen(true); setError('') }}
             disabled={!templateId}
-            title={!templateId ? '未匹配模板时无法配置规则' : undefined}
+            title={!templateId ? t('toolbar.configRules.disabled') : undefined}
           >
-            ⚙ 配置规则
+            {t('toolbar.configRules')}
           </button>
         </div>
       </div>
@@ -2291,10 +2075,10 @@ function App() {
       {uploadPaneCollapsed ? (
         <div className="upload-collapsed">
           <div className="upload-collapsed-files">
-            <div><b>原始：</b>{leftFile?.name || '未选择'}</div>
-            <div><b>修订：</b>{rightFile?.name || '未选择'}</div>
+            <div><b>{t('upload.collapsed.original')}</b>{leftFile?.name || t('upload.collapsed.none')}</div>
+            <div><b>{t('upload.collapsed.revised')}</b>{rightFile?.name || t('upload.collapsed.none')}</div>
           </div>
-          <button className="icon-btn" title="展开上传区" onClick={() => setUploadPaneCollapsed(false)}>▾</button>
+          <button className="icon-btn" title={t('upload.collapsed.expand')} onClick={() => setUploadPaneCollapsed(false)}>▾</button>
         </div>
       ) : (
         <div className="upload-wrap">
@@ -2316,7 +2100,7 @@ function App() {
             <div className="side-actions-top">
               <div className="side-actions-controls">
                 <div className="field-row">
-                  <div className="field-row-label">合同类型</div>
+                  <div className="field-row-label">{t('side.contractType')}</div>
                   <select
                     className="select"
                     value={templateId}
@@ -2331,12 +2115,12 @@ function App() {
                   <label className="switch">
                     <input type="checkbox" checked={aiCheckEnabled} onChange={(e) => setAiCheckEnabled(e.target.checked)} disabled={!templateId} />
                     <span className="switch-ui" aria-hidden="true" />
-                    <span className="switch-text">AI检查</span>
+                    <span className="switch-text">{t('side.aiCheck')}</span>
                   </label>
                   <label className="switch">
                     <input type="checkbox" checked={aiAnalyzeEnabled} onChange={(e) => setAiAnalyzeEnabled(e.target.checked)} />
                     <span className="switch-ui" aria-hidden="true" />
-                    <span className="switch-text">AI分析</span>
+                    <span className="switch-text">{t('side.aiAnalyze')}</span>
                   </label>
                 </div>
               </div>
@@ -2346,7 +2130,7 @@ function App() {
                   onClick={handleDiff} 
                   disabled={loading || rightBlocks.length === 0 || (leftBlocks.length === 0 && !templateId)}
                 >
-                  {loading ? '⏳ 对比中' : '⇄ 开始对比'}
+                  {loading ? t('side.compare.loading') : t('side.compare.start')}
                 </button>
                 <button
                   className="btn-secondary btn-reset"
@@ -2371,9 +2155,9 @@ function App() {
                     setAiCheckEnabled(false)
                   }}
                   disabled={loading && !uploadPaneCollapsed}
-                  title="清空已上传文件与对比结果"
+                  title={t('side.reset.title')}
                 >
-                  ↺ 重置
+                  {t('side.reset')}
                 </button>
               </div>
             </div>
@@ -2382,20 +2166,20 @@ function App() {
       )}
 
       <div className="mid-actions">
-        <label className="switch" title="仅展示差异行">
+        <label className="switch" title={t('mid.showOnlyDiff.title')}>
           <input
             type="checkbox"
             checked={showOnlyDiff}
             onChange={(e) => { setShowOnlyDiff(e.target.checked); setActiveDiffIndex(0) }}
           />
           <span className="switch-ui" aria-hidden="true" />
-          <span className="switch-text">显示差异</span>
+          <span className="switch-text">{t('mid.showOnlyDiff')}</span>
         </label>
         <button
           className="btn-secondary"
           onClick={() => jumpToDiff(activeDiffIndex - 1)}
           disabled={diffOnlyRows.length === 0}
-          title="上一处差异"
+          title={t('mid.diff.prev')}
         >
           ↑
         </button>
@@ -2403,30 +2187,30 @@ function App() {
           className="btn-secondary"
           onClick={() => jumpToDiff(activeDiffIndex + 1)}
           disabled={diffOnlyRows.length === 0}
-          title="下一处差异"
+          title={t('mid.diff.next')}
         >
           ↓
         </button>
         <button
           className="icon-btn"
-          title={checkPaneOpen ? '收起检查栏' : '展开检查栏'}
+          title={checkPaneOpen ? t('mid.checkPane.collapse') : t('mid.checkPane.expand')}
           onClick={() => setCheckPaneOpen(v => !v)}
           disabled={!checkRun}
         >
           {checkPaneOpen ? '🧾▾' : '🧾▸'}
         </button>
-        <label className="switch" title="开启：只看问题；关闭：全部">
+        <label className="switch" title={t('mid.checkFilter.title')}>
           <input
             type="checkbox"
             checked={checkFilter === 'issues'}
             onChange={(e) => setCheckFilter(e.target.checked ? 'issues' : 'all')}
           />
           <span className="switch-ui" aria-hidden="true" />
-          <span className="switch-text">{checkFilter === 'issues' ? '只看问题' : '全部'}</span>
+          <span className="switch-text">{checkFilter === 'issues' ? t('mid.checkFilter.issuesOnly') : t('mid.checkFilter.all')}</span>
         </label>
         <button
           className="icon-btn"
-          title={globalPaneOpen ? '收起全局建议' : '展开全局建议'}
+          title={globalPaneOpen ? t('mid.globalPane.collapse') : t('mid.globalPane.expand')}
           onClick={async () => {
             const next = !globalPaneOpen
             setGlobalPaneOpen(next)
@@ -2440,7 +2224,7 @@ function App() {
         </button>
         {aiAnalyzeEnabled && globalAnalyzeLoading && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>分析中</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>{t('mid.globalAnalyze.loading')}</div>
             <div className="scrollbar-progress" aria-hidden="true">
               <div className="thumb" />
             </div>
@@ -2448,7 +2232,7 @@ function App() {
         )}
         {aiCheckEnabled && checkLoading && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>AI执行中</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>{t('mid.check.loading')}</div>
             <div className="scrollbar-progress" aria-hidden="true">
               <div className="thumb" />
             </div>
@@ -2465,11 +2249,11 @@ function App() {
       {globalPaneOpen && (
         <div style={{ marginTop: 14, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 800 }}>全局风险与改进建议</div>
+            <div style={{ fontWeight: 800 }}>{t('global.title')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               {aiAnalyzeEnabled && globalAnalyzeLoading && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>分析中</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{t('mid.globalAnalyze.loading')}</div>
                   <div className="scrollbar-progress" aria-hidden="true">
                     <div className="thumb" />
                   </div>
@@ -2480,7 +2264,7 @@ function App() {
                 disabled={globalAnalyzeLoading || diffRows.length === 0 || !aiAnalyzeEnabled}
                 onClick={async () => { await runGlobalAnalyze(diffRows, checkRun) }}
               >
-                {globalAnalyzeLoading ? '分析中...' : '重新分析'}
+                {globalAnalyzeLoading ? t('global.reanalyze.loading') : t('global.reanalyze')}
               </button>
             </div>
           </div>
@@ -2507,30 +2291,35 @@ function App() {
           </colgroup>
           <thead>
             <tr>
-              <th style={{ textAlign: 'center' }}>原文内容</th>
+              <th style={{ textAlign: 'center' }}>{t('diff.left')}</th>
               <th className="status-divider"></th>
-              <th style={{ textAlign: 'center' }}>修订内容</th>
+              <th style={{ textAlign: 'center' }}>{t('diff.right')}</th>
               {checkPaneOpen && (
                 <th>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minWidth: 0 }}>
-                    <div>检查结果</div>
+                    <div>{t('check.title')}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {checkRun ? (
                         <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                          通过 {checkRun.summary?.counts?.pass ?? 0} · 不通过 {checkRun.summary?.counts?.fail ?? 0} · 警告 {checkRun.summary?.counts?.warn ?? 0} · 需人工 {checkRun.summary?.counts?.manual ?? 0}
+                          {t('check.summary', {
+                            pass: checkRun.summary?.counts?.pass ?? 0,
+                            fail: checkRun.summary?.counts?.fail ?? 0,
+                            warn: checkRun.summary?.counts?.warn ?? 0,
+                            manual: checkRun.summary?.counts?.manual ?? 0
+                          })}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>未运行检查</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t('check.notRun')}</div>
                       )}
                       {aiCheckEnabled && checkLoading && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>AI执行中</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{t('mid.check.loading')}</div>
                           <div className="scrollbar-progress" aria-hidden="true">
                             <div className="thumb" />
                           </div>
                         </div>
                       )}
-                      {!aiCheckEnabled && checkLoading && <div style={{ fontSize: 11, color: 'var(--muted)' }}>检查中...</div>}
+                      {!aiCheckEnabled && checkLoading && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t('check.loading')}</div>}
                     </div>
                   </div>
                 </th>
@@ -2615,7 +2404,7 @@ function App() {
                                   <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{it.message}</div>
                                   {getAiText(it.ai) && (
                                     <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--control-border)', fontSize: 12, color: 'var(--muted)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                                      AI：{getAiText(it.ai)}
+                                      {t('label.ai')}{getAiText(it.ai)}
                                     </div>
                                   )}
                                 </div>
@@ -2624,11 +2413,11 @@ function App() {
                           </div>
                         ) : (
                           <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                            {!row.rightBlockId ? '—' : checkFilter === 'issues' ? '—' : '无检查项'}
+                            {!row.rightBlockId ? t('evidence.none') : checkFilter === 'issues' ? t('evidence.none') : t('check.cell.none')}
                           </div>
                         )
                       ) : (
-                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>—</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('evidence.none')}</div>
                       )}
                     </td>
                   )}
@@ -2652,17 +2441,19 @@ function App() {
         reloadTemplateIndex={reloadTemplateIndex}
         loadTemplateSnapshot={loadTemplateSnapshot}
         renameTemplate={async (id, name) => {
-          const res = await fetch(`/api/templates/${encodeURIComponent(id)}/name`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-          })
-          if (!res.ok) throw new Error(`重命名失败：${res.statusText}`)
+          try {
+            await api.templates.rename(id, name)
+          } catch (e: any) {
+            throw new Error(t('error.template.rename', { message: e?.message || String(e) }))
+          }
           await reloadTemplateIndex()
         }}
         deleteTemplate={async (id) => {
-          const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' })
-          if (!res.ok) throw new Error(`删除失败：${res.statusText}`)
+          try {
+            await api.templates.delete(id)
+          } catch (e: any) {
+            throw new Error(t('error.template.delete', { message: e?.message || String(e) }))
+          }
           await reloadTemplateIndex()
           if (templateId === id) setTemplateId('sales_contract_cn')
         }}
@@ -2688,6 +2479,7 @@ function App() {
         saveGlobalPrompt={saveGlobalPrompt}
       />
     </div>
+    </I18nProvider>
   )
 }
 
