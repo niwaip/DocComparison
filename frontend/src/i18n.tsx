@@ -6,9 +6,6 @@ type Dict = Record<string, string>
 
 const zhCN: Dict = {
   'app.title': '文档对比',
-  'toolbar.language': '语言',
-  'toolbar.lang.zh': '中文',
-  'toolbar.lang.en': 'English',
   'toolbar.lang.switchTitle': '切换语言',
   'toolbar.theme.toLight': '切换到亮色系',
   'toolbar.theme.toDark': '切换到暗色系',
@@ -215,9 +212,6 @@ const zhCN: Dict = {
 
 const enUS: Dict = {
   'app.title': 'Doc Comparison',
-  'toolbar.language': 'Language',
-  'toolbar.lang.zh': '中文',
-  'toolbar.lang.en': 'English',
   'toolbar.lang.switchTitle': 'Switch language',
   'toolbar.theme.toLight': 'Switch to light theme',
   'toolbar.theme.toDark': 'Switch to dark theme',

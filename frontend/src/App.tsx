@@ -1,6 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer } from 'react'
 import ContractRulesModal from './ContractRulesModal'
 import { api } from './api'
+import HeaderBar from './components/HeaderBar'
+import GlobalAnalyzePanel from './features/analyze/GlobalAnalyzePanel'
+import CheckPanel from './features/check/CheckPanel'
+import { checkDomId } from './features/check/checkDom'
+import FileUploadCard from './features/compare/FileUploadCard'
 import { detectFieldsFromBlock } from './domain/fieldDetection'
 import { escapeRegex, hashString } from './domain/textUtils'
 import { I18nProvider, createT, normalizeLang, type Lang } from './i18n'
@@ -178,60 +183,104 @@ function App() {
     globalPaneOpen
   } = state
 
-  const makeSetter = <K extends keyof AppState>(key: K) => {
-    return (valueOrUpdater: AppState[K] | ((prev: AppState[K]) => AppState[K])) => {
-      if (typeof valueOrUpdater === 'function') {
-        dispatch({ type: 'update', key, updater: valueOrUpdater as any } as AppAction)
-      } else {
-        dispatch({ type: 'set', key, value: valueOrUpdater } as AppAction)
+  const setters = useMemo(() => {
+    const makeSetter = <K extends keyof AppState>(key: K) => {
+      return (valueOrUpdater: AppState[K] | ((prev: AppState[K]) => AppState[K])) => {
+        if (typeof valueOrUpdater === 'function') {
+          dispatch({ type: 'update', key, updater: valueOrUpdater as any } as AppAction)
+        } else {
+          dispatch({ type: 'set', key, value: valueOrUpdater } as AppAction)
+        }
       }
     }
-  }
 
-  const setLeftFile = makeSetter('leftFile')
-  const setRightFile = makeSetter('rightFile')
-  const setLeftBlocks = makeSetter('leftBlocks')
-  const setRightBlocks = makeSetter('rightBlocks')
-  const setDiffRows = makeSetter('diffRows')
-  const setLoading = makeSetter('loading')
-  const setError = makeSetter('error')
-  const setShowOnlyDiff = makeSetter('showOnlyDiff')
-  const setActiveDiffIndex = makeSetter('activeDiffIndex')
-  const setActiveRowId = makeSetter('activeRowId')
-  const setConfigOpen = makeSetter('configOpen')
-  const setTemplateId = makeSetter('templateId')
-  const setAiCheckEnabled = makeSetter('aiCheckEnabled')
-  const setAiAnalyzeEnabled = makeSetter('aiAnalyzeEnabled')
-  const setUploadPaneCollapsed = makeSetter('uploadPaneCollapsed')
-  const setCheckLoading = makeSetter('checkLoading')
-  const setCheckRun = makeSetter('checkRun')
-  const setCheckFilter = makeSetter('checkFilter')
-  const setCheckPaneOpen = makeSetter('checkPaneOpen')
-  const setTheme = makeSetter('theme')
-  const setRulesetLoading = makeSetter('rulesetLoading')
-  const setTemplateBlocks = makeSetter('templateBlocks')
-  const setTemplateIndex = makeSetter('templateIndex')
-  const setTemplateIndexLoading = makeSetter('templateIndexLoading')
-  const setNewTemplateId = makeSetter('newTemplateId')
-  const setNewTemplateName = makeSetter('newTemplateName')
-  const setNewTemplateVersion = makeSetter('newTemplateVersion')
-  const setTemplateDraftFile = makeSetter('templateDraftFile')
-  const setFieldRules = makeSetter('fieldRules')
-  const setBlockPrompts = makeSetter('blockPrompts')
-  const setGlobalPromptCfg = makeSetter('globalPromptCfg')
-  const setGlobalPromptLoading = makeSetter('globalPromptLoading')
-  const setGlobalPromptDefaultDraft = makeSetter('globalPromptDefaultDraft')
-  const setGlobalPromptTemplateDraft = makeSetter('globalPromptTemplateDraft')
-  const setGlobalAnalyzeLoading = makeSetter('globalAnalyzeLoading')
-  const setGlobalAnalyzeRaw = makeSetter('globalAnalyzeRaw')
-  const setGlobalAnalyzeShowRaw = makeSetter('globalAnalyzeShowRaw')
-  const setGlobalPaneOpen = makeSetter('globalPaneOpen')
-  const setLang = makeSetter('lang')
+    return {
+      setLeftFile: makeSetter('leftFile'),
+      setRightFile: makeSetter('rightFile'),
+      setLeftBlocks: makeSetter('leftBlocks'),
+      setRightBlocks: makeSetter('rightBlocks'),
+      setDiffRows: makeSetter('diffRows'),
+      setLoading: makeSetter('loading'),
+      setError: makeSetter('error'),
+      setShowOnlyDiff: makeSetter('showOnlyDiff'),
+      setActiveDiffIndex: makeSetter('activeDiffIndex'),
+      setActiveRowId: makeSetter('activeRowId'),
+      setConfigOpen: makeSetter('configOpen'),
+      setTemplateId: makeSetter('templateId'),
+      setAiCheckEnabled: makeSetter('aiCheckEnabled'),
+      setAiAnalyzeEnabled: makeSetter('aiAnalyzeEnabled'),
+      setUploadPaneCollapsed: makeSetter('uploadPaneCollapsed'),
+      setCheckLoading: makeSetter('checkLoading'),
+      setCheckRun: makeSetter('checkRun'),
+      setCheckFilter: makeSetter('checkFilter'),
+      setCheckPaneOpen: makeSetter('checkPaneOpen'),
+      setTheme: makeSetter('theme'),
+      setRulesetLoading: makeSetter('rulesetLoading'),
+      setTemplateBlocks: makeSetter('templateBlocks'),
+      setTemplateIndex: makeSetter('templateIndex'),
+      setTemplateIndexLoading: makeSetter('templateIndexLoading'),
+      setNewTemplateId: makeSetter('newTemplateId'),
+      setNewTemplateName: makeSetter('newTemplateName'),
+      setNewTemplateVersion: makeSetter('newTemplateVersion'),
+      setTemplateDraftFile: makeSetter('templateDraftFile'),
+      setFieldRules: makeSetter('fieldRules'),
+      setBlockPrompts: makeSetter('blockPrompts'),
+      setGlobalPromptCfg: makeSetter('globalPromptCfg'),
+      setGlobalPromptLoading: makeSetter('globalPromptLoading'),
+      setGlobalPromptDefaultDraft: makeSetter('globalPromptDefaultDraft'),
+      setGlobalPromptTemplateDraft: makeSetter('globalPromptTemplateDraft'),
+      setGlobalAnalyzeLoading: makeSetter('globalAnalyzeLoading'),
+      setGlobalAnalyzeRaw: makeSetter('globalAnalyzeRaw'),
+      setGlobalAnalyzeShowRaw: makeSetter('globalAnalyzeShowRaw'),
+      setGlobalPaneOpen: makeSetter('globalPaneOpen')
+    }
+  }, [dispatch])
+
+  const {
+    setLeftFile,
+    setRightFile,
+    setLeftBlocks,
+    setRightBlocks,
+    setDiffRows,
+    setLoading,
+    setError,
+    setShowOnlyDiff,
+    setActiveDiffIndex,
+    setActiveRowId,
+    setConfigOpen,
+    setTemplateId,
+    setAiCheckEnabled,
+    setAiAnalyzeEnabled,
+    setUploadPaneCollapsed,
+    setCheckLoading,
+    setCheckRun,
+    setCheckFilter,
+    setCheckPaneOpen,
+    setTheme,
+    setRulesetLoading,
+    setTemplateBlocks,
+    setTemplateIndex,
+    setTemplateIndexLoading,
+    setNewTemplateId,
+    setNewTemplateName,
+    setNewTemplateVersion,
+    setTemplateDraftFile,
+    setFieldRules,
+    setBlockPrompts,
+    setGlobalPromptCfg,
+    setGlobalPromptLoading,
+    setGlobalPromptDefaultDraft,
+    setGlobalPromptTemplateDraft,
+    setGlobalAnalyzeLoading,
+    setGlobalAnalyzeRaw,
+    setGlobalAnalyzeShowRaw,
+    setGlobalPaneOpen
+  } = setters
 
   const t = useMemo(() => createT(lang), [lang])
   const setLangInProvider = useCallback((next: Lang) => {
     dispatch({ type: 'set', key: 'lang', value: next } as AppAction)
-  }, [])
+  }, [dispatch])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -240,7 +289,8 @@ function App() {
   useEffect(() => {
     try {
       window.localStorage?.setItem('doccmp.lang', lang)
-    } catch {
+    } catch (err) {
+      void err
     }
   }, [lang])
 
@@ -260,7 +310,7 @@ function App() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [setTemplateIndex, setTemplateIndexLoading])
 
   const templateNameById = useMemo(() => {
     const map = new Map<string, string>()
@@ -280,14 +330,14 @@ function App() {
   useEffect(() => {
     if (!globalPromptCfg) return
     setGlobalPromptTemplateDraft(globalPromptCfg?.byTemplateId?.[templateId] || '')
-  }, [templateId, globalPromptCfg])
+  }, [templateId, globalPromptCfg, setGlobalPromptTemplateDraft])
 
   useEffect(() => {
     if (templateId) return
     setAiCheckEnabled(false)
     setCheckRun(null)
     setCheckPaneOpen(false)
-  }, [templateId])
+  }, [templateId, setAiCheckEnabled, setCheckPaneOpen, setCheckRun])
 
   // Helper to map blockId to Block object for rendering
   const getBlock = (blocks: Block[], id: string | null) => {
@@ -339,7 +389,7 @@ function App() {
       }
       return next
     })
-  }, [detectedFields])
+  }, [detectedFields, setBlockPrompts, setFieldRules])
 
   const updateFieldRule = (fieldId: string, patch: Partial<FieldRuleState>) => {
     setFieldRules((prev) => ({
@@ -496,56 +546,6 @@ function App() {
     return `${raw.slice(0, 240)}…`
   }
 
-  const FileUpload = ({ 
-    side, 
-    onFileSelect, 
-    blocks,
-    fileName 
-  }: { 
-    side: 'left' | 'right', 
-    onFileSelect: (file: File) => void, 
-    blocks: Block[],
-    fileName: string | null
-  }) => {
-    const fileInputRef = React.useRef<HTMLInputElement>(null)
-
-    const handleClick = () => {
-      fileInputRef.current?.click()
-    }
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-        onFileSelect(e.target.files[0])
-      }
-    }
-
-    return (
-      <div className="file-upload-card" onClick={handleClick}>
-        <input 
-          type="file" 
-          accept=".docx" 
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          onChange={handleChange}
-        />
-        <div className="upload-icon">
-          {side === 'left' ? '📄' : '📝'}
-        </div>
-        <div className="upload-info">
-          <h3>{side === 'left' ? t('upload.leftTitle') : t('upload.rightTitle')}</h3>
-          <p className={fileName ? 'file-name' : 'placeholder'}>
-            {fileName || t('upload.clickUpload')}
-          </p>
-          {blocks.length > 0 && (
-            <div className="status-badge">
-              {t('upload.parsedBlocks', { count: blocks.length })}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   const diffOnlyRows = diffRows.filter(r => r.kind !== 'matched')
   const rightBlockIdsWithIssues = new Set<string>()
   ;(checkRun?.items || []).forEach(it => {
@@ -594,7 +594,7 @@ function App() {
     } finally {
       setCheckLoading(false)
     }
-  }, [aiCheckEnabled])
+  }, [aiCheckEnabled, setCheckLoading, setCheckRun, setError, t])
 
   const runGlobalAnalyze = async (rows: AlignmentRow[], cr: CheckRunResponse | null) => {
     if (!aiAnalyzeEnabled) return
@@ -655,7 +655,7 @@ function App() {
     }
   }
 
-  const loadTemplateSnapshot = async (tid: string) => {
+  const loadTemplateSnapshot = useCallback(async (tid: string) => {
     setLoading(true)
     setError('')
     try {
@@ -756,12 +756,12 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [setBlockPrompts, setError, setFieldRules, setLoading, setTemplateBlocks, setTemplateDraftFile, t])
 
   useEffect(() => {
     if (!configOpen) return
     void loadTemplateSnapshot(templateId)
-  }, [configOpen, templateId])
+  }, [configOpen, loadTemplateSnapshot, templateId])
 
   const saveRuleset = async () => {
     setRulesetLoading(true)
@@ -948,7 +948,15 @@ function App() {
     } finally {
       setGlobalPromptLoading(false)
     }
-  }, [templateId])
+  }, [
+    setError,
+    setGlobalPromptCfg,
+    setGlobalPromptDefaultDraft,
+    setGlobalPromptLoading,
+    setGlobalPromptTemplateDraft,
+    t,
+    templateId
+  ])
 
   const saveGlobalPrompt = async () => {
     setGlobalPromptLoading(true)
@@ -990,462 +998,7 @@ function App() {
     }
     setGlobalPromptDefaultDraft(globalPromptCfg?.defaultPrompt || '')
     setGlobalPromptTemplateDraft(globalPromptCfg?.byTemplateId?.[templateId] || '')
-  }, [configOpen, templateId, globalPromptCfg, loadGlobalPrompt])
-
-  const renderCheckPanel = () => {
-    if (!checkRun) return null
-    const items = checkRun.items.filter(it => checkFilter === 'all' ? true : it.status !== 'pass')
-    return (
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontWeight: 800 }}>{t('check.title')}</div>
-          {checkRun.runId && <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' }}>{checkRun.runId}</div>}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-          {t('check.summary', {
-            pass: checkRun.summary?.counts?.pass ?? 0,
-            fail: checkRun.summary?.counts?.fail ?? 0,
-            warn: checkRun.summary?.counts?.warn ?? 0,
-            manual: checkRun.summary?.counts?.manual ?? 0
-          })}
-        </div>
-        {items.length > 0 ? (
-          <div style={{ marginTop: 10, display: 'grid', gap: 8, paddingRight: 2 }}>
-            {items.map(it => {
-              const color = it.status === 'fail' ? 'rgba(185, 28, 28, 1)' : it.status === 'warn' ? 'rgba(146, 64, 14, 1)' : it.status === 'manual' ? 'rgba(30, 64, 175, 1)' : 'var(--text)'
-              const bg = it.status === 'fail' ? 'rgba(239,68,68,0.10)' : it.status === 'warn' ? 'rgba(245,158,11,0.14)' : it.status === 'manual' ? 'rgba(37,99,235,0.10)' : 'rgba(255,255,255,0.06)'
-              return (
-                <div key={it.pointId} id={checkDomId(it.pointId)} data-point-id={it.pointId} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 10, background: bg }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <div style={{ fontWeight: 750, lineHeight: 1.25 }}>{it.title}</div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color }}>
-                      {it.status.toUpperCase()}
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text)' }}>{it.message}</div>
-                  {it.evidence?.excerpt && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)' }}>{it.evidence.excerpt}</div>
-                  )}
-                  {getAiText(it.ai) && (
-                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--control-border)', fontSize: 12, color: 'var(--muted)' }}>
-                      AI：{getAiText(it.ai)}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)' }}>
-            {checkFilter === 'issues' ? t('check.empty.issues') : t('check.empty.all')}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const checkDomId = (pointId: string) => `check-${encodeURIComponent(pointId)}`
-
-  const renderGlobalAnalyze = () => {
-    const raw = (globalAnalyzeRaw || '').trim()
-    if (!raw) {
-      return (
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          {diffRows.length === 0
-            ? t('globalAnalyze.empty.needDiff')
-            : !aiAnalyzeEnabled
-              ? t('globalAnalyze.empty.disabled')
-              : globalAnalyzeLoading
-                ? t('globalAnalyze.empty.loading')
-                : t('globalAnalyze.empty.none')}
-        </div>
-      )
-    }
-
-    try {
-      let parsed: any = null
-      try {
-        parsed = JSON.parse(raw)
-      } catch {
-        parsed = null
-      }
-
-      const chipStyle: React.CSSProperties = {
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '2px 8px',
-        borderRadius: 999,
-        border: '1px solid var(--control-border)',
-        background: 'rgba(255,255,255,0.06)',
-        fontSize: 11,
-        fontWeight: 750,
-        color: 'var(--text)'
-      }
-
-      const humanizeText = (s: any) => {
-        let out = String(s || '')
-        out = out.replace(/\bblockai\.[a-z0-9]+\b/gi, t('ref.thisBlock'))
-        out = out.replace(/\btable\.[a-z0-9]+\b/gi, t('ref.thisTable'))
-        out = out.replace(/\bfield\.[a-z0-9]+\b/gi, t('ref.thisField'))
-        out = out.replace(/\br_(\d{4})\b/gi, (_m, g1) => t('label.row', { n: parseInt(String(g1), 10) }))
-        out = out.replace(/\bb_(\d{4})\b/gi, (_m, g1) => t('label.block', { n: parseInt(String(g1), 10) }))
-        out = out.replace(/\s{2,}/g, ' ')
-        return out
-      }
-
-    const riskBadge = (level: any) => {
-      const v = String(level || '').toLowerCase()
-      const cfg =
-        v === 'high'
-          ? { bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.38)', fg: 'rgba(248,113,113,1)', text: t('risk.high') }
-          : v === 'medium'
-            ? { bg: 'rgba(245,158,11,0.16)', bd: 'rgba(245,158,11,0.40)', fg: 'rgba(251,191,36,1)', text: t('risk.medium') }
-            : v === 'low'
-              ? { bg: 'rgba(34,197,94,0.14)', bd: 'rgba(34,197,94,0.38)', fg: 'rgba(74,222,128,1)', text: t('risk.low') }
-              : { bg: 'rgba(255,255,255,0.06)', bd: 'var(--control-border)', fg: 'var(--muted)', text: String(level || t('evidence.none')) }
-      return <span style={{ ...chipStyle, background: cfg.bg, borderColor: cfg.bd, color: cfg.fg }}>{cfg.text}</span>
-    }
-
-    const priorityBadge = (p: any) => {
-      const v = String(p || '').toLowerCase()
-      const cfg =
-        v === 'critical' || v === 'high'
-          ? { bg: 'rgba(239,68,68,0.14)', bd: 'rgba(239,68,68,0.38)', fg: 'rgba(248,113,113,1)', text: v === 'critical' ? t('priority.critical') : t('priority.high') }
-          : v === 'medium'
-            ? { bg: 'rgba(245,158,11,0.16)', bd: 'rgba(245,158,11,0.40)', fg: 'rgba(251,191,36,1)', text: t('priority.medium') }
-            : v === 'low'
-              ? { bg: 'rgba(34,197,94,0.14)', bd: 'rgba(34,197,94,0.38)', fg: 'rgba(74,222,128,1)', text: t('priority.low') }
-              : { bg: 'rgba(255,255,255,0.06)', bd: 'var(--control-border)', fg: 'var(--muted)', text: String(p || t('evidence.none')) }
-      return <span style={{ ...chipStyle, background: cfg.bg, borderColor: cfg.bd, color: cfg.fg }}>{cfg.text}</span>
-    }
-
-    const clip = (s: string, n: number) => {
-      const t = String(s || '').replace(/\s+/g, ' ').trim()
-      if (!t) return ''
-      return t.length > n ? `${t.slice(0, n)}…` : t
-    }
-
-    const labelFor = (id: string) => {
-      const mRow = id.match(/^r_(\d{4})$/i)
-      if (mRow) return t('label.row', { n: parseInt(mRow[1], 10) })
-      const mBlock = id.match(/^b_(\d{4})$/i)
-      if (mBlock) return t('label.block', { n: parseInt(mBlock[1], 10) })
-      if (/^table\./i.test(id)) return t('label.tableShort')
-      if (/^field\./i.test(id)) return t('label.fieldShort')
-      if (/^blockai\./i.test(id)) return t('label.blockShort')
-      return id
-    }
-
-    const findRowByBlockId = (bid: string) => {
-      for (const r of diffRows) {
-        if (r.leftBlockId === bid || r.rightBlockId === bid) return r
-      }
-      return null
-    }
-
-    const evidenceChips = (ids: any) => {
-      const arr = Array.isArray(ids) ? ids : []
-      const clean = arr.map((x) => String(x)).filter(Boolean)
-      if (clean.length === 0) return <span style={{ color: 'var(--muted)' }}>{t('evidence.none')}</span>
-
-      const wrapId = (label: string, id: string) => (lang === 'zh-CN' ? `${label}（${id}）` : `${label} (${id})`)
-
-      const tooltipFor = (id: string) => {
-        if (/^r_\d+$/i.test(id)) {
-          const r = diffRows.find((x) => x.rowId === id) || null
-          if (!r) return id
-          const ltxt = r.leftBlockId ? clip(getBlock(leftBlocks, r.leftBlockId)?.text || '', 140) : ''
-          const rtxt = r.rightBlockId ? clip(getBlock(rightBlocks, r.rightBlockId)?.text || '', 140) : ''
-          const parts = [wrapId(labelFor(id), id)]
-          if (ltxt) parts.push(t('evidence.left', { text: ltxt }))
-          if (rtxt) parts.push(t('evidence.right', { text: rtxt }))
-          return parts.join('\n')
-        }
-
-        const it = (checkRun?.items || []).find((x) => x.pointId === id) || null
-        if (it) {
-          const parts = [wrapId(labelFor(id), id), clip(it.title || '', 80), clip(it.message || '', 180)]
-          const ex = clip(it.evidence?.excerpt || '', 200)
-          if (ex) parts.push(t('evidence.excerpt', { text: ex }))
-          return parts.filter(Boolean).join('\n')
-        }
-
-        const r = findRowByBlockId(id)
-        if (r) {
-          const ltxt = r.leftBlockId ? clip(getBlock(leftBlocks, r.leftBlockId)?.text || '', 140) : ''
-          const rtxt = r.rightBlockId ? clip(getBlock(rightBlocks, r.rightBlockId)?.text || '', 140) : ''
-          const parts = [
-            wrapId(labelFor(id), id),
-            t('evidence.rowAt', { label: labelFor(r.rowId), id: r.rowId })
-          ]
-          if (ltxt) parts.push(t('evidence.left', { text: ltxt }))
-          if (rtxt) parts.push(t('evidence.right', { text: rtxt }))
-          return parts.join('\n')
-        }
-
-        const b = getBlock(leftBlocks, id) || getBlock(rightBlocks, id)
-        if (b) {
-          const t = clip(b.text || '', 220)
-          const head = wrapId(labelFor(id), id)
-          return t ? `${head}\n${t}` : head
-        }
-
-        return wrapId(labelFor(id), id)
-      }
-
-      const jumpToEvidence = (id: string) => {
-        if (/^r_\d+$/i.test(id)) {
-          scrollToRow(id)
-          return
-        }
-
-        const r = findRowByBlockId(id)
-        if (r) {
-          scrollToRow(r.rowId)
-          return
-        }
-
-        const it = (checkRun?.items || []).find((x) => x.pointId === id) || null
-        if (it) {
-          setCheckPaneOpen(true)
-          window.setTimeout(() => {
-            const el = document.getElementById(checkDomId(id))
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          }, 80)
-        }
-      }
-
-      return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {clean.map((id) => (
-            <button
-              key={id}
-              type="button"
-              title={tooltipFor(id)}
-              onClick={() => jumpToEvidence(id)}
-              style={{ ...chipStyle, cursor: 'pointer', userSelect: 'none' }}
-            >
-              {labelFor(id)}
-            </button>
-          ))}
-        </div>
-      )
-    }
-
-    const blockTitleFor = (b: any) => {
-      const blockId = typeof b?.blockId === 'string' ? b.blockId : ''
-      if (!blockId) return humanizeText(b?.blockTitle || b?.title || '')
-      const blk = getBlock(rightBlocks, blockId) || getBlock(leftBlocks, blockId)
-      const txt = String(blk?.text || '').trim()
-      if (txt) {
-        const first = txt.split('\n').map((x) => x.trim()).filter(Boolean)[0] || ''
-        if (first) {
-          const cleaned = first.replace(/\s+/g, ' ').replace(/^第?\s*\d+\s*[条款章节部分]\s*/g, '').trim()
-          const clipped = cleaned.length > 48 ? `${cleaned.slice(0, 48)}…` : cleaned
-          if (clipped) return clipped
-        }
-      }
-      return labelFor(blockId)
-    }
-
-      const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'separate', borderSpacing: 0 }
-      const thStyle: React.CSSProperties = { textAlign: 'left', fontSize: 12, color: 'var(--muted)', padding: '8px 8px', borderBottom: '1px solid var(--control-border)', background: 'rgba(255,255,255,0.03)' }
-      const tdStyle: React.CSSProperties = { verticalAlign: 'top', fontSize: 13, color: 'var(--text)', padding: '8px 8px', borderBottom: '1px solid var(--control-border)' }
-
-      if (!parsed || typeof parsed !== 'object') {
-        return (
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6, padding: 12, borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)' }}>{raw}</pre>
-        )
-      }
-
-    const overallRiskLevel = parsed.overallRiskLevel
-    const summary = typeof parsed.summary === 'string' ? parsed.summary : ''
-    const confidence = parsed.confidence
-    const keyFindings = Array.isArray(parsed.keyFindings) ? parsed.keyFindings : []
-    const improvementSuggestions = Array.isArray(parsed.improvementSuggestions) ? parsed.improvementSuggestions : []
-    const missingInformation = Array.isArray(parsed.missingInformation) ? parsed.missingInformation : []
-    const sections = Array.isArray(parsed.sections) ? parsed.sections : []
-    const blockReviews = Array.isArray(parsed.blockReviews) ? parsed.blockReviews : []
-
-      return (
-        <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 900 }}>{t('globalAnalyze.conclusion')}</div>
-            {riskBadge(overallRiskLevel)}
-            {confidence !== undefined && confidence !== null && (
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.confidence', { value: Number(confidence).toFixed(2) })}</span>
-            )}
-          </div>
-          <button className="btn-secondary" onClick={() => setGlobalAnalyzeShowRaw((v) => !v)}>
-            {globalAnalyzeShowRaw ? t('globalAnalyze.raw.hide') : t('globalAnalyze.raw.show')}
-          </button>
-        </div>
-
-        {summary ? (
-          <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'var(--control-bg)', fontSize: 13, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {humanizeText(summary)}
-          </div>
-        ) : null}
-
-        {keyFindings.length > 0 && (
-          <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--control-bg)' }}>
-            <div style={{ padding: 12, fontWeight: 900 }}>{t('globalAnalyze.keyFindings')}</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={{ ...thStyle, width: 180 }}>{t('globalAnalyze.table.issue')}</th>
-                    <th style={thStyle}>{t('globalAnalyze.table.detail')}</th>
-                    <th style={{ ...thStyle, width: 220 }}>{t('globalAnalyze.table.evidence')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keyFindings.map((x: any, idx: number) => (
-                    <tr key={String(x?.title || idx)}>
-                      <td style={tdStyle}>{humanizeText(x?.title || '')}</td>
-                      <td style={{ ...tdStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>{humanizeText(x?.detail || '')}</td>
-                      <td style={tdStyle}>{evidenceChips(x?.evidenceIds)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {improvementSuggestions.length > 0 && (
-          <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--control-bg)' }}>
-            <div style={{ padding: 12, fontWeight: 900 }}>{t('globalAnalyze.suggestions')}</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={{ ...thStyle, width: 72 }}>{t('globalAnalyze.table.priority')}</th>
-                    <th style={{ ...thStyle, width: 180 }}>{t('globalAnalyze.table.suggestion')}</th>
-                    <th style={thStyle}>{t('globalAnalyze.table.content')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {improvementSuggestions.map((x: any, idx: number) => (
-                    <tr key={String(x?.title || idx)}>
-                      <td style={tdStyle}>{priorityBadge(x?.priority)}</td>
-                      <td style={tdStyle}>{humanizeText(x?.title || '')}</td>
-                      <td style={{ ...tdStyle, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>{humanizeText(x?.detail || '')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {missingInformation.length > 0 && (
-          <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'var(--control-bg)' }}>
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>{t('globalAnalyze.missing')}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {missingInformation.map((x: any, idx: number) => (
-                <span key={String(x || idx)} style={chipStyle}>{humanizeText(x || '')}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {sections.length > 0 && (
-          <details style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'var(--control-bg)', padding: 12 }} open>
-            <summary style={{ cursor: 'pointer', fontWeight: 900 }}>{t('globalAnalyze.sections')}</summary>
-            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(560px, 1fr))', gap: 10 }}>
-              {sections.map((s: any, idx: number) => (
-                <div key={String(s?.title || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ fontWeight: 900 }}>{humanizeText(s?.title || '')}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      {riskBadge(s?.riskLevel)}
-                      {Array.isArray(s?.evidenceIds) && s.evidenceIds.length > 0 && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.evidenceCount', { count: s.evidenceIds.length })}</span>}
-                    </div>
-                  </div>
-                  {Array.isArray(s?.findings) && s.findings.length > 0 && (
-                    <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.issue')}</div>
-                      <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                        {s.findings.map((x: any, i2: number) => (
-                          <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {Array.isArray(s?.suggestions) && s.suggestions.length > 0 && (
-                    <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.suggestion')}</div>
-                      <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                        {s.suggestions.map((x: any, i2: number) => (
-                          <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-                    {evidenceChips(s?.evidenceIds)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
-
-        {blockReviews.length > 0 && (
-          <details style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'var(--control-bg)', padding: 12 }}>
-            <summary style={{ cursor: 'pointer', fontWeight: 900 }}>{t('globalAnalyze.blocks')}</summary>
-            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(560px, 1fr))', gap: 10 }}>
-              {blockReviews.slice(0, 60).map((b: any, idx: number) => (
-                <div key={String(b?.blockId || idx)} style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.03)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ fontWeight: 900 }} title={typeof b?.blockId === 'string' ? `${labelFor(b.blockId)}（${b.blockId}）` : undefined}>
-                      {blockTitleFor(b)}
-                    </div>
-                    {riskBadge(b?.riskLevel)}
-                  </div>
-                  {Array.isArray(b?.issues) && b.issues.length > 0 && (
-                    <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.issue')}</div>
-                      <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                        {b.issues.map((x: any, i2: number) => (
-                          <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {Array.isArray(b?.suggestions) && b.suggestions.length > 0 && (
-                    <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
-                      <div style={{ fontWeight: 850, color: 'var(--muted)' }}>{t('globalAnalyze.table.suggestion')}</div>
-                      <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-                        {b.suggestions.map((x: any, i2: number) => (
-                          <div key={String(x || i2)} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{humanizeText(x || '')}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {blockReviews.length > 60 && (
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('globalAnalyze.shownFirst', { count: 60 })}</div>
-              )}
-            </div>
-          </details>
-        )}
-
-        {globalAnalyzeShowRaw && (
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6, padding: 12, borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)' }}>{raw}</pre>
-        )}
-        </div>
-      )
-    } catch (err) {
-      console.error(err)
-      return (
-        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6, padding: 12, borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)' }}>{raw}</pre>
-      )
-    }
-  }
+  }, [configOpen, globalPromptCfg, loadGlobalPrompt, setGlobalPromptDefaultDraft, setGlobalPromptTemplateDraft, templateId])
 
   return (
     <I18nProvider lang={lang} setLang={setLangInProvider}>
@@ -1765,15 +1318,15 @@ function App() {
           display: grid;
           grid-template-columns: 1fr auto;
           gap: 10px;
-          align-items: start;
+          align-items: stretch;
         }
         .field-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
         .select {
           width: 100%;
-          height: 36px;
+          height: 44px;
           border-radius: 12px;
           border: 1px solid var(--control-border);
-          padding: 0 10px;
+          padding: 0 12px;
           font-weight: 650;
           background: var(--control-bg);
           color: var(--control-text);
@@ -1784,9 +1337,14 @@ function App() {
         }
         .side-actions-switches{
           display: flex;
-          align-items: center;
+          align-items: stretch;
           gap: 10px;
           flex-wrap: nowrap;
+        }
+        .side-actions-switches .switch{
+          height: 44px;
+          padding: 0 12px;
+          box-sizing: border-box;
         }
         .field-row{
           display: flex;
@@ -2040,37 +1598,12 @@ function App() {
         }
       `}</style>
 
-      <div className="header">
-        <h1>
-          <div className="header-logo">D</div>
-          {t('app.title')}
-        </h1>
-        <div className="toolbar">
-          <button
-            className="btn-secondary"
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            title={theme === 'dark' ? t('toolbar.theme.toLight') : t('toolbar.theme.toDark')}
-          >
-            {theme === 'dark' ? t('toolbar.theme.light') : t('toolbar.theme.dark')}
-          </button>
-          <button
-            className="btn-secondary"
-            onClick={() => setLang((prev) => (prev === 'zh-CN' ? 'en-US' : 'zh-CN'))}
-            title={t('toolbar.lang.switchTitle')}
-            style={{ height: 34, padding: '0 10px' }}
-          >
-            🌐
-          </button>
-          <button
-            className="btn-secondary"
-            onClick={() => { setConfigOpen(true); setError('') }}
-            disabled={!templateId}
-            title={!templateId ? t('toolbar.configRules.disabled') : undefined}
-          >
-            {t('toolbar.configRules')}
-          </button>
-        </div>
-      </div>
+      <HeaderBar
+        theme={theme}
+        toggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        openRules={() => { setConfigOpen(true); setError('') }}
+        rulesDisabled={!templateId}
+      />
       
       {uploadPaneCollapsed ? (
         <div className="upload-collapsed">
@@ -2083,13 +1616,13 @@ function App() {
       ) : (
         <div className="upload-wrap">
           <div className="upload-grid">
-            <FileUpload 
+            <FileUploadCard
               side="left" 
               onFileSelect={(f) => { setLeftFile(f); parseFile(f, 'left'); }}
               blocks={leftBlocks}
               fileName={leftFile?.name || null}
             />
-            <FileUpload 
+            <FileUploadCard
               side="right" 
               onFileSelect={(f) => { setRightFile(f); parseFile(f, 'right'); }}
               blocks={rightBlocks}
@@ -2242,36 +1775,25 @@ function App() {
 
       {checkRun && checkPaneOpen && diffRows.length === 0 && (
         <div style={{ marginTop: 14 }}>
-          {renderCheckPanel()}
+          <CheckPanel checkRun={checkRun} checkFilter={checkFilter} getAiText={getAiText} />
         </div>
       )}
 
       {globalPaneOpen && (
-        <div style={{ marginTop: 14, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 800 }}>{t('global.title')}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              {aiAnalyzeEnabled && globalAnalyzeLoading && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{t('mid.globalAnalyze.loading')}</div>
-                  <div className="scrollbar-progress" aria-hidden="true">
-                    <div className="thumb" />
-                  </div>
-                </div>
-              )}
-              <button
-                className="btn-secondary"
-                disabled={globalAnalyzeLoading || diffRows.length === 0 || !aiAnalyzeEnabled}
-                onClick={async () => { await runGlobalAnalyze(diffRows, checkRun) }}
-              >
-                {globalAnalyzeLoading ? t('global.reanalyze.loading') : t('global.reanalyze')}
-              </button>
-            </div>
-          </div>
-          <div style={{ marginTop: 10 }}>
-            {renderGlobalAnalyze()}
-          </div>
-        </div>
+        <GlobalAnalyzePanel
+          aiAnalyzeEnabled={aiAnalyzeEnabled}
+          globalAnalyzeLoading={globalAnalyzeLoading}
+          globalAnalyzeRaw={globalAnalyzeRaw}
+          globalAnalyzeShowRaw={globalAnalyzeShowRaw}
+          setGlobalAnalyzeShowRaw={setGlobalAnalyzeShowRaw}
+          diffRows={diffRows}
+          checkRun={checkRun}
+          leftBlocks={leftBlocks}
+          rightBlocks={rightBlocks}
+          runGlobalAnalyze={async () => { await runGlobalAnalyze(diffRows, checkRun) }}
+          scrollToRow={scrollToRow}
+          setCheckPaneOpen={setCheckPaneOpen}
+        />
       )}
 
       {error && (

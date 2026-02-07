@@ -229,25 +229,25 @@ export default function ContractRulesModalLegacy(props: Props) {
                 <div style={{ fontWeight: 750, marginBottom: 8 }}>{t('rules.templateLibrary.existing')}</div>
                 {templateIndex.length > 0 ? (
                   <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflow: 'auto', paddingRight: 2 }}>
-                    {templateIndex.map((t) => (
-                      <div key={t.templateId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--control-border)', borderRadius: 10, padding: '8px 10px', background: 'var(--control-bg)' }}>
+                    {templateIndex.map((tpl) => (
+                      <div key={tpl.templateId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--control-border)', borderRadius: 10, padding: '8px 10px', background: 'var(--control-bg)' }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 750, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                          <div style={{ fontWeight: 750, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {t.templateId} · {t('rules.templateLibrary.versions', { count: t.versions.length })}
+                            {tpl.templateId} · {t('rules.templateLibrary.versions', { count: tpl.versions.length })}
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           <button
                             className="btn-secondary"
                             onClick={async () => {
-                              setTemplateId(t.templateId)
-                              setNewTemplateId(t.templateId)
-                              setNewTemplateName(t.name || t.templateId)
-                              const latestVersion = (Array.isArray(t.versions) ? [...t.versions].sort() : []).slice(-1)[0]
+                              setTemplateId(tpl.templateId)
+                              setNewTemplateId(tpl.templateId)
+                              setNewTemplateName(tpl.name || tpl.templateId)
+                              const latestVersion = (Array.isArray(tpl.versions) ? [...tpl.versions].sort() : []).slice(-1)[0]
                               if (latestVersion) setNewTemplateVersion(latestVersion)
                               try {
-                                await loadTemplateSnapshot(t.templateId)
+                                await loadTemplateSnapshot(tpl.templateId)
                               } catch (e: any) {
                                 window.alert(e?.message || String(e))
                               }
@@ -259,10 +259,10 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
-                              const nextName = (window.prompt(t('rules.templateLibrary.renamePrompt'), t.name || '') || '').trim()
+                              const nextName = (window.prompt(t('rules.templateLibrary.renamePrompt'), tpl.name || '') || '').trim()
                               if (!nextName) return
                               try {
-                                await renameTemplate(t.templateId, nextName)
+                                await renameTemplate(tpl.templateId, nextName)
                               } catch (e: any) {
                                 window.alert(e?.message || String(e))
                               }
@@ -274,9 +274,9 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
-                              if (!window.confirm(t('rules.templateLibrary.deleteConfirm', { name: t.name || t.templateId }))) return
+                              if (!window.confirm(t('rules.templateLibrary.deleteConfirm', { name: tpl.name || tpl.templateId }))) return
                               try {
-                                await deleteTemplate(t.templateId)
+                                await deleteTemplate(tpl.templateId)
                               } catch (e: any) {
                                 window.alert(e?.message || String(e))
                               }
@@ -288,9 +288,9 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
-                              setTemplateId(t.templateId)
+                              setTemplateId(tpl.templateId)
                               try {
-                                await loadTemplateSnapshot(t.templateId)
+                                await loadTemplateSnapshot(tpl.templateId)
                               } catch (e: any) {
                                 window.alert(e?.message || String(e))
                               }

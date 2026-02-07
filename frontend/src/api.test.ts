@@ -42,7 +42,7 @@ describe('api', () => {
   })
 
   it('checkRun sends expected payload', async () => {
-    const fetchMock = vi.fn(async (_url: any, _init: any) =>
+    const fetchMock = vi.fn(async () =>
       makeRes({
         ok: true,
         status: 200,

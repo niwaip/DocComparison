@@ -1,6 +1,5 @@
 import React from 'react'
 import { flags } from './config/flags'
-import type { DetectedField, FieldRuleState } from './domain/types'
 import ContractRulesModalV2, { type ContractRulesModalProps } from './features/rules/ContractRulesModalV2'
 import ContractRulesModalLegacy from './legacy/ContractRulesModalLegacy'
 
