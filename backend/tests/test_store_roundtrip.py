@@ -5,7 +5,7 @@ import unittest
 from app.models import Block, BlockKind, BlockMeta, GlobalPromptConfig, Ruleset, TemplateSnapshot
 from app.services.prompt_store import get_global_prompt_config, upsert_global_prompt_config
 from app.services.ruleset_store import get_ruleset, upsert_ruleset
-from app.services.template_store import get_latest_template, upsert_template
+from app.services.template_store import get_latest_template, match_templates, upsert_template
 from app.models import CheckRule, RuleType, CheckStatus
 from app.services.check_service import _eval_required_after_colon, _has_underline_placeholder, _refine_block_for_label_rules
 
@@ -48,6 +48,41 @@ class StoreRoundtripTests(unittest.TestCase):
         self.assertEqual(got.version, "2026-02-07")
         self.assertEqual(got.name, "Template 1")
         self.assertEqual(got.blocks[0].text, "hello")
+
+    def test_template_match_prefers_outline_then_fallback(self):
+        sales_tpl = TemplateSnapshot(
+            templateId="sales_contract_cn",
+            name="买卖合同（销售）",
+            version="2026-02-06",
+            signature="sig-s",
+            blocks=[
+                _make_block("s1", "买卖合同\n买方：A\n卖方：B"),
+                _make_block("s2", "一、 产品名称、规格、数量、价格"),
+                _make_block("s3", "二、 交货方式、日期及最终用户："),
+            ],
+        )
+        purchase_tpl = TemplateSnapshot(
+            templateId="purchase_contract_cn",
+            name="买卖合同(采购)",
+            version="2026-02-08",
+            signature="sig-p",
+            blocks=[
+                _make_block("p1", "买卖合同\n买方：A\n卖方：B"),
+                _make_block("p2", "一、产品编号、描述、数量、价格等："),
+                _make_block("p3", "二、交货方式及日期："),
+            ],
+        )
+        upsert_template(sales_tpl)
+        upsert_template(purchase_tpl)
+
+        req_blocks = [
+            _make_block("r1", "买卖合同\n买方：X\n卖方：Y"),
+            _make_block("r2", "一、产品编号、描述、数量、价格等：\n见附件二"),
+            _make_block("r3", "二、交货方式及日期：\n1．运输方式："),
+        ]
+        res = match_templates(req_blocks)
+        self.assertIsNotNone(res.best)
+        self.assertEqual(res.best.templateId, "purchase_contract_cn")
 
     def test_ruleset_store_roundtrip(self):
         rs = Ruleset(templateId="t1", name="Template 1", version="2026-02-07", referenceData={}, points=[])

@@ -40,7 +40,7 @@ export default function TemplateLibraryPanel(props: Props) {
   } = props
 
   const [snapshotFileName, setSnapshotFileName] = React.useState('')
-  const [editingExisting, setEditingExisting] = React.useState(false)
+  const [editingTemplateId, setEditingTemplateId] = React.useState<string | null>(null)
   const lastAutoNameRef = React.useRef<string>('')
 
   const baseNameFromFileName = React.useCallback((name: string) => {
@@ -76,9 +76,14 @@ export default function TemplateLibraryPanel(props: Props) {
                     <button
                       className="btn-secondary"
                       onClick={async () => {
-                        setEditingExisting(true)
+                        const isEditing = editingTemplateId === tpl.templateId
+                        if (isEditing) {
+                          setEditingTemplateId(null)
+                          return
+                        }
+                        setEditingTemplateId(tpl.templateId)
                         setTemplateId(tpl.templateId)
-                        setNewTemplateId(tpl.templateId)
+                        setNewTemplateId('')
                         setNewTemplateName(tpl.name || tpl.templateId)
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
@@ -88,7 +93,7 @@ export default function TemplateLibraryPanel(props: Props) {
                       }}
                       style={{ height: 34, padding: '0 10px' }}
                     >
-                      {t('common.edit')}
+                      {editingTemplateId === tpl.templateId ? t('common.detach') : t('common.edit')}
                     </button>
                     <button
                       className="btn-secondary"
@@ -122,7 +127,7 @@ export default function TemplateLibraryPanel(props: Props) {
                     <button
                       className="btn-secondary"
                       onClick={async () => {
-                        setEditingExisting(false)
+                        setEditingTemplateId(null)
                         setTemplateId(tpl.templateId)
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
@@ -150,7 +155,6 @@ export default function TemplateLibraryPanel(props: Props) {
             <input
               value={newTemplateId}
               onChange={(e) => setNewTemplateId(e.target.value)}
-              disabled={editingExisting}
               style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }}
             />
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.name')}</div>
@@ -166,7 +170,7 @@ export default function TemplateLibraryPanel(props: Props) {
                 const f = e.target.files?.[0]
                 if (!f) return
                 setSnapshotFileName(f.name)
-                if (!editingExisting) setNewTemplateId('')
+                setEditingTemplateId(null)
                 const nextAuto = baseNameFromFileName(f.name)
                 if (nextAuto) {
                   lastAutoNameRef.current = nextAuto

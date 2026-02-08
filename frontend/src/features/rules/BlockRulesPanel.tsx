@@ -130,7 +130,8 @@ export default function BlockRulesPanel(props: Props) {
 
   const hasBlocks = templateBlocks.length > 0
   const [blockOpen, setBlockOpen] = React.useState<Record<string, boolean>>({})
-  const [groupMode, setGroupMode] = React.useState<'top' | 'inputs'>('top')
+  const [groupMode, setGroupMode] = React.useState<'top' | 'inputs'>('inputs')
+  const [expandAll, setExpandAll] = React.useState(true)
 
   const blockGroups = React.useMemo(() => {
     if (groupMode === 'inputs') {
@@ -207,33 +208,47 @@ export default function BlockRulesPanel(props: Props) {
   }, [detectedFields, groupMode, templateBlocks])
 
   const allExpanded = blockGroups.length > 0 && blockGroups.every((g) => blockOpen[g.groupKey] === true)
+  const groupKeys = React.useMemo(() => blockGroups.map((g) => g.groupKey).join('|'), [blockGroups])
+
+  React.useEffect(() => {
+    if (blockGroups.length === 0) return
+    setBlockOpen(() => {
+      const next: Record<string, boolean> = {}
+      for (const g of blockGroups) next[g.groupKey] = expandAll
+      return next
+    })
+  }, [expandAll, groupKeys, blockGroups])
 
   return (
     <div id="block-config-panel" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 800 }}>{t('rules.blockRules.title')}</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            className="btn-secondary"
-            disabled={!hasBlocks}
-            onClick={() => setGroupMode((v) => (v === 'top' ? 'inputs' : 'top'))}
-          >
-            {groupMode === 'top' ? t('rules.blockRules.groupByInputs') : t('rules.blockRules.groupByTop')}
-          </button>
-          <button
-            className="btn-secondary"
-            disabled={blockGroups.length === 0}
-            onClick={() => {
-              setBlockOpen(() => {
-                const next: Record<string, boolean> = {}
-                for (const g of blockGroups) next[g.groupKey] = !allExpanded
-                return next
-              })
-            }}
-          >
-            {allExpanded ? t('rules.blockRules.collapseAll') : t('rules.blockRules.expandAll')}
-          </button>
-          <button className="btn-primary" onClick={saveRuleset} disabled={rulesetLoading || !hasBlocks}>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={groupMode === 'top'}
+              disabled={!hasBlocks}
+              onChange={(e) => setGroupMode(e.target.checked ? 'top' : 'inputs')}
+            />
+            <span className="switch-ui" aria-hidden="true" />
+            <span className="switch-text">
+              {groupMode === 'inputs' ? t('rules.blockRules.filter.inputs') : t('rules.blockRules.filter.all')}
+            </span>
+          </label>
+
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={allExpanded}
+              disabled={blockGroups.length === 0}
+              onChange={(e) => setExpandAll(e.target.checked)}
+            />
+            <span className="switch-ui" aria-hidden="true" />
+            <span className="switch-text">{t('rules.blockRules.expandAll')}</span>
+          </label>
+
+          <button className="btn-primary btn-primary-save" onClick={saveRuleset} disabled={rulesetLoading || !hasBlocks}>
             {rulesetLoading ? t('rules.blockRules.saving') : t('rules.blockRules.save')}
           </button>
         </div>

@@ -179,8 +179,9 @@ export default function ContractRulesModalLegacy(props: Props) {
   const hasBlocks = templateBlocks.length > 0
   const hasDetected = detectedFields.length > 0
   const [blockOpen, setBlockOpen] = React.useState<Record<string, boolean>>({})
+  const [expandAll, setExpandAll] = React.useState(true)
   const [snapshotFileName, setSnapshotFileName] = React.useState('')
-  const [editingExisting, setEditingExisting] = React.useState(false)
+  const [editingTemplateId, setEditingTemplateId] = React.useState<string | null>(null)
   const blockGroups = React.useMemo(() => {
     const order = new Map<string, number>()
     templateBlocks.forEach((b, idx) => order.set(b.structurePath, idx))
@@ -205,6 +206,16 @@ export default function ContractRulesModalLegacy(props: Props) {
     return groups
   }, [detectedFields, templateBlocks])
   const allExpanded = blockGroups.length > 0 && blockGroups.every((g) => blockOpen[g.structurePath] === true)
+  const groupKeys = React.useMemo(() => blockGroups.map((g) => g.structurePath).join('|'), [blockGroups])
+
+  React.useEffect(() => {
+    if (blockGroups.length === 0) return
+    setBlockOpen(() => {
+      const next: Record<string, boolean> = {}
+      for (const g of blockGroups) next[g.structurePath] = expandAll
+      return next
+    })
+  }, [expandAll, groupKeys, blockGroups])
 
   if (!open) return null
 
@@ -249,19 +260,24 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
-                              setEditingExisting(true)
-                              setTemplateId(tpl.templateId)
-                              setNewTemplateId(tpl.templateId)
-                              setNewTemplateName(tpl.name || tpl.templateId)
-                              try {
-                                await loadTemplateSnapshot(tpl.templateId)
-                              } catch (e) {
-                                reportError(e)
-                              }
+                            const isEditing = editingTemplateId === tpl.templateId
+                            if (isEditing) {
+                              setEditingTemplateId(null)
+                              return
+                            }
+                            setEditingTemplateId(tpl.templateId)
+                            setTemplateId(tpl.templateId)
+                            setNewTemplateId('')
+                            setNewTemplateName(tpl.name || tpl.templateId)
+                            try {
+                              await loadTemplateSnapshot(tpl.templateId)
+                            } catch (e) {
+                              reportError(e)
+                            }
                             }}
                             style={{ height: 34, padding: '0 10px' }}
                           >
-                            {t('common.edit')}
+                          {editingTemplateId === tpl.templateId ? t('common.detach') : t('common.edit')}
                           </button>
                           <button
                             className="btn-secondary"
@@ -295,7 +311,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
-                              setEditingExisting(false)
+                            setEditingTemplateId(null)
                               setTemplateId(tpl.templateId)
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
@@ -323,7 +339,6 @@ export default function ContractRulesModalLegacy(props: Props) {
                   <input
                     value={newTemplateId}
                     onChange={(e) => setNewTemplateId(e.target.value)}
-                    disabled={editingExisting}
                     style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }}
                   />
                   <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.name')}</div>
@@ -339,7 +354,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                       const f = e.target.files?.[0]
                       if (!f) return
                       setSnapshotFileName(f.name)
-                      if (!editingExisting) setNewTemplateId('')
+                      setEditingTemplateId(null)
                       generateTemplateSnapshot(f)
                       window.setTimeout(() => {
                         const el = document.getElementById('block-config-panel')
@@ -370,20 +385,17 @@ export default function ContractRulesModalLegacy(props: Props) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <div style={{ fontWeight: 800 }}>{t('rules.blockRules.title')}</div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  className="btn-secondary"
-                  disabled={!hasDetected}
-                  onClick={() => {
-                    setBlockOpen(() => {
-                      const next: Record<string, boolean> = {}
-                      for (const g of blockGroups) next[g.structurePath] = !allExpanded
-                      return next
-                    })
-                  }}
-                >
-                  {allExpanded ? t('rules.blockRules.collapseAll') : t('rules.blockRules.expandAll')}
-                </button>
-                <button className="btn-primary" onClick={saveRuleset} disabled={rulesetLoading || !hasBlocks}>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={allExpanded}
+                    disabled={!hasDetected || blockGroups.length === 0}
+                    onChange={(e) => setExpandAll(e.target.checked)}
+                  />
+                  <span className="switch-ui" aria-hidden="true" />
+                  <span className="switch-text">{t('rules.blockRules.expandAll')}</span>
+                </label>
+                <button className="btn-primary btn-primary-save" onClick={saveRuleset} disabled={rulesetLoading || !hasBlocks}>
                   {rulesetLoading ? t('rules.blockRules.saving') : t('rules.blockRules.save')}
                 </button>
               </div>

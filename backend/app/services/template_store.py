@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.models import Block, TemplateSnapshot, TemplateListItem, TemplateMatchItem, TemplateMatchResponse
 from app.services.ruleset_store import delete_ruleset, get_ruleset, upsert_ruleset
-from app.utils.text_utils import normalize_text, strip_section_noise
+from app.utils.text_utils import get_leading_section_label, normalize_text, strip_section_noise
 
 
 def _lock_path(target_path: str) -> str:
@@ -158,6 +158,46 @@ def compute_signature(blocks: List[Block]) -> Tuple[str, List[str]]:
     return _sha1(joined), tokens
 
 
+def _outline_token(text: str) -> str:
+    s = normalize_text(text).split("\n")[0].strip()
+    s = strip_section_noise(s)
+    s = re.split(r"[:：]", s, maxsplit=1)[0]
+    s = re.sub(r"[_\s]+", "", s)
+    s = re.sub(r"\d+", "0", s)
+    s = s.lower().strip()
+    return s[:80]
+
+
+def _extract_outline_tokens(blocks: List[Block], limit: int = 60) -> List[str]:
+    out: List[str] = []
+    for idx, b in enumerate(blocks):
+        if len(out) >= limit:
+            break
+        raw = (b.text or "").strip()
+        if not raw:
+            continue
+        first_line = normalize_text(raw).split("\n")[0].strip()
+        if not first_line:
+            continue
+        kind = getattr(b.kind, "value", str(b.kind))
+        is_heading_kind = kind == "heading" or (getattr(getattr(b, "meta", None), "headingLevel", None) is not None)
+        has_section_label = get_leading_section_label(first_line) is not None
+        if idx == 0 or is_heading_kind or has_section_label:
+            tok = _outline_token(first_line)
+            if tok and tok not in out:
+                out.append(tok)
+    return out
+
+
+def _latest_templates_by_id() -> List[TemplateSnapshot]:
+    latest_by_id: Dict[str, TemplateSnapshot] = {}
+    for t in list_templates():
+        prev = latest_by_id.get(t.templateId)
+        if prev is None or t.version > prev.version:
+            latest_by_id[t.templateId] = t
+    return list(latest_by_id.values())
+
+
 def list_templates() -> List[TemplateSnapshot]:
     ensure_templates_file()
     path = _templates_file_path()
@@ -286,9 +326,45 @@ def get_latest_template(template_id: str) -> Optional[TemplateSnapshot]:
 
 
 def match_templates(blocks: List[Block], top_n: int = 5) -> TemplateMatchResponse:
+    latest_templates = _latest_templates_by_id()
+
+    target_outline = _extract_outline_tokens(blocks)
+    outline_candidates: List[TemplateMatchItem] = []
+    if len(target_outline) >= 2:
+        for t in latest_templates:
+            tpl_outline = _extract_outline_tokens(t.blocks)
+            if len(tpl_outline) < 2:
+                continue
+            score = SequenceMatcher(None, tpl_outline, target_outline).ratio()
+            outline_candidates.append(
+                TemplateMatchItem(
+                    templateId=t.templateId,
+                    name=t.name,
+                    version=t.version,
+                    score=float(score),
+                )
+            )
+        outline_candidates.sort(key=lambda x: x.score, reverse=True)
+        best = outline_candidates[0] if outline_candidates else None
+        second = outline_candidates[1] if len(outline_candidates) > 1 else None
+        if best and best.score >= 0.72 and (second is None or (best.score - second.score) >= 0.06):
+            boosted: List[TemplateMatchItem] = []
+            for c in outline_candidates:
+                s = min(1.0, 0.9 + 0.1 * float(c.score))
+                boosted.append(
+                    TemplateMatchItem(
+                        templateId=c.templateId,
+                        name=c.name,
+                        version=c.version,
+                        score=s,
+                    )
+                )
+            trimmed = boosted[: max(1, int(top_n))]
+            return TemplateMatchResponse(best=trimmed[0] if trimmed else None, candidates=trimmed)
+
     _, target_tokens = compute_signature(blocks)
     candidates: List[TemplateMatchItem] = []
-    for t in list_templates():
+    for t in latest_templates:
         _, tpl_tokens = compute_signature(t.blocks)
         score = SequenceMatcher(None, tpl_tokens, target_tokens).ratio()
         candidates.append(

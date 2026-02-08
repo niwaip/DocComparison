@@ -154,6 +154,17 @@ body {
 .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.02); }
 .btn-primary:active { transform: translateY(0); background: var(--primary-pressed); box-shadow: 0 6px 12px rgba(37,99,235,0.18); }
 .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; filter: none; }
+.btn-primary.btn-primary-save{
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(37,99,235,1), rgba(16,185,129,0.96));
+  border: 1px solid rgba(37,99,235,0.34);
+  box-shadow: 0 12px 22px rgba(37,99,235,0.22);
+}
+.btn-primary.btn-primary-save:active{
+  background: linear-gradient(135deg, rgba(29,78,216,1), rgba(5,150,105,1));
+}
 .toolbar {
   display: flex;
   align-items: center;
