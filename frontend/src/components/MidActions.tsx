@@ -57,10 +57,10 @@ export default function MidActions(props: Props) {
         <span className="switch-text">{t('mid.showOnlyDiff')}</span>
       </label>
 
-      <button className="btn-secondary" onClick={onPrevDiff} disabled={!hasDiffOnlyRows} title={t('mid.diff.prev')}>
+      <button className="icon-btn" onClick={onPrevDiff} disabled={!hasDiffOnlyRows} title={t('mid.diff.prev')}>
         ↑
       </button>
-      <button className="btn-secondary" onClick={onNextDiff} disabled={!hasDiffOnlyRows} title={t('mid.diff.next')}>
+      <button className="icon-btn" onClick={onNextDiff} disabled={!hasDiffOnlyRows} title={t('mid.diff.next')}>
         ↓
       </button>
 
@@ -105,4 +105,3 @@ export default function MidActions(props: Props) {
     </div>
   )
 }
-

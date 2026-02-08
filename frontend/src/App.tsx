@@ -555,12 +555,36 @@ function App() {
       />
       
       {uploadPaneCollapsed ? (
-        <div className="upload-collapsed">
+        <div
+          className="upload-collapsed"
+          title={t('upload.collapsed.expand')}
+          role="button"
+          tabIndex={0}
+          onClick={() => setUploadPaneCollapsed(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setUploadPaneCollapsed(false)
+          }}
+        >
           <div className="upload-collapsed-files">
-            <div><b>{t('upload.collapsed.original')}</b>{leftFile?.name || t('upload.collapsed.none')}</div>
-            <div><b>{t('upload.collapsed.revised')}</b>{rightFile?.name || t('upload.collapsed.none')}</div>
+            <div className="upload-collapsed-item">
+              <b>{t('upload.collapsed.original')}</b>
+              <span className="upload-collapsed-name">{leftFile?.name || t('upload.collapsed.none')}</span>
+            </div>
+            <div className="upload-collapsed-item">
+              <b>{t('upload.collapsed.revised')}</b>
+              <span className="upload-collapsed-name">{rightFile?.name || t('upload.collapsed.none')}</span>
+            </div>
           </div>
-          <button className="icon-btn" title={t('upload.collapsed.expand')} onClick={() => setUploadPaneCollapsed(false)}>▾</button>
+          <button
+            className="icon-btn"
+            title={t('upload.collapsed.expand')}
+            onClick={(e) => {
+              e.stopPropagation()
+              setUploadPaneCollapsed(false)
+            }}
+          >
+            ▾
+          </button>
         </div>
       ) : (
         <div className="upload-wrap">
