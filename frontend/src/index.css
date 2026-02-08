@@ -576,9 +576,6 @@ td {
   overflow-wrap: anywhere;
   overflow-x: hidden;
 }
-.block-content p[style*="text-indent:"]:not([style*="text-indent: -"]){
-  text-indent: 0 !important;
-}
 .block-content p { margin: 0 0 8px 0; }
 .block-content p:last-child { margin-bottom: 0; }
 .block-content ul, .block-content ol { margin: 4px 0; padding-left: 24px; }
@@ -665,6 +662,15 @@ th.status-divider {
 .aligned-table td { padding: 0; border: 0; vertical-align: top; }
 .aligned-table .aligned-col { width: 100%; }
 .aligned-cell-inner { width: 100%; white-space: pre-wrap; word-break: break-word; }
+.aligned-cell-inner p,
+.aligned-cell-inner h1,
+.aligned-cell-inner h2,
+.aligned-cell-inner h3,
+.aligned-cell-inner h4,
+.aligned-cell-inner h5,
+.aligned-cell-inner h6 {
+  margin: 0;
+}
 
 .meta-info { display: none; }
 

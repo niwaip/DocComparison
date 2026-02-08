@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Block, DetectedField, FieldRuleState, TemplateListItem } from '../domain/types'
-import { escapeRegex } from '../domain/textUtils'
+import { applyIndentDataAttrs, escapeRegex } from '../domain/textUtils'
 import { useI18n } from '../i18n'
 
 type Props = {
@@ -19,15 +19,11 @@ type Props = {
   loadTemplateSnapshot: (templateId: string) => Promise<void>
   renameTemplate: (templateId: string, name: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
-  exportSkill: (templateId: string, version?: string) => Promise<void>
-  importSkill: (file: File, overwriteSameVersion: boolean) => Promise<void>
 
   newTemplateId: string
   setNewTemplateId: (v: string) => void
   newTemplateName: string
   setNewTemplateName: (v: string) => void
-  newTemplateVersion: string
-  setNewTemplateVersion: (v: string) => void
   generateTemplateSnapshot: (file: File) => void
 
   templateBlocks: Block[]
@@ -71,8 +67,6 @@ export default function ContractRulesModalLegacy(props: Props) {
     setNewTemplateId,
     newTemplateName,
     setNewTemplateName,
-    newTemplateVersion,
-    setNewTemplateVersion,
     generateTemplateSnapshot,
     templateBlocks,
     detectedFields,
@@ -186,6 +180,7 @@ export default function ContractRulesModalLegacy(props: Props) {
   const hasDetected = detectedFields.length > 0
   const [blockOpen, setBlockOpen] = React.useState<Record<string, boolean>>({})
   const [snapshotFileName, setSnapshotFileName] = React.useState('')
+  const [editingExisting, setEditingExisting] = React.useState(false)
   const blockGroups = React.useMemo(() => {
     const order = new Map<string, number>()
     templateBlocks.forEach((b, idx) => order.set(b.structurePath, idx))
@@ -248,19 +243,16 @@ export default function ContractRulesModalLegacy(props: Props) {
                       <div key={tpl.templateId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--control-border)', borderRadius: 10, padding: '8px 10px', background: 'var(--control-bg)' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 750, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {tpl.templateId} · {t('rules.templateLibrary.versions', { count: tpl.versions.length })}
-                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.templateId}</div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           <button
                             className="btn-secondary"
                             onClick={async () => {
+                              setEditingExisting(true)
                               setTemplateId(tpl.templateId)
                               setNewTemplateId(tpl.templateId)
                               setNewTemplateName(tpl.name || tpl.templateId)
-                              const latestVersion = (Array.isArray(tpl.versions) ? [...tpl.versions].sort() : []).slice(-1)[0]
-                              if (latestVersion) setNewTemplateVersion(latestVersion)
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
                               } catch (e) {
@@ -303,6 +295,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <button
                             className="btn-secondary"
                             onClick={async () => {
+                              setEditingExisting(false)
                               setTemplateId(tpl.templateId)
                               try {
                                 await loadTemplateSnapshot(tpl.templateId)
@@ -327,11 +320,14 @@ export default function ContractRulesModalLegacy(props: Props) {
                 <div style={{ fontWeight: 750, marginBottom: 8 }}>{t('rules.templateLibrary.generate')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8, alignItems: 'center' }}>
                   <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>templateId</div>
-                  <input value={newTemplateId} onChange={(e) => setNewTemplateId(e.target.value)} style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }} />
+                  <input
+                    value={newTemplateId}
+                    onChange={(e) => setNewTemplateId(e.target.value)}
+                    disabled={editingExisting}
+                    style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }}
+                  />
                   <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.name')}</div>
                   <input value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }} />
-                  <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.version')}</div>
-                  <input value={newTemplateVersion} onChange={(e) => setNewTemplateVersion(e.target.value)} style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }} />
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <input
@@ -343,6 +339,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                       const f = e.target.files?.[0]
                       if (!f) return
                       setSnapshotFileName(f.name)
+                      if (!editingExisting) setNewTemplateId('')
                       generateTemplateSnapshot(f)
                       window.setTimeout(() => {
                         const el = document.getElementById('block-config-panel')
@@ -452,7 +449,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                               }}
                             >
                               {g.block.htmlFragment ? (
-                                <div dangerouslySetInnerHTML={{ __html: g.block.htmlFragment }} />
+                                <div dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(g.block.htmlFragment) }} />
                               ) : /table/i.test(g.block.kind || '') || g.block.kind === 'table' ? (
                                 renderTableFromText(g.block.text || '') || <div style={{ whiteSpace: 'pre-wrap' }}>{excerpt}</div>
                               ) : (

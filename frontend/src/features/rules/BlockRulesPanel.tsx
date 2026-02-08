@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Block, DetectedField, FieldRuleState } from '../../domain/types'
-import { escapeRegex } from '../../domain/textUtils'
+import { applyIndentDataAttrs, escapeRegex } from '../../domain/textUtils'
 import { useI18n } from '../../i18n'
 
 type Props = {
@@ -54,6 +54,15 @@ const getBlockTitle = (b: Block | null, fallbackTitle: string) => {
   const line = (t.split('\n').map((x) => x.trim()).filter(Boolean)[0] || '').trim()
   const s = line.replace(/\s+/g, ' ')
   return s.length > 36 ? `${s.slice(0, 36)}…` : s
+}
+
+const firstLevelKey = (structurePath: string) => {
+  const sp = (structurePath || '').trim()
+  if (!sp) return ''
+  const parts = sp.split('.').map((x) => x.trim()).filter(Boolean)
+  const liIdx = parts.findIndex((p) => /^li\[\d+\]$/.test(p))
+  if (liIdx >= 0) return parts.slice(0, liIdx + 1).join('.')
+  return parts.join('.')
 }
 
 const findLabelExcerpt = (b: Block | null, label: string) => {
@@ -120,34 +129,84 @@ export default function BlockRulesPanel(props: Props) {
   const { templateBlocks, detectedFields, fieldRules, updateFieldRule, blockPrompts, setBlockPrompts, saveRuleset, rulesetLoading } = props
 
   const hasBlocks = templateBlocks.length > 0
-  const hasDetected = detectedFields.length > 0
   const [blockOpen, setBlockOpen] = React.useState<Record<string, boolean>>({})
+  const [groupMode, setGroupMode] = React.useState<'top' | 'inputs'>('top')
 
   const blockGroups = React.useMemo(() => {
-    const order = new Map<string, number>()
-    templateBlocks.forEach((b, idx) => order.set(b.structurePath, idx))
-    const map = new Map<string, DetectedField[]>()
+    if (groupMode === 'inputs') {
+      const order = new Map<string, number>()
+      templateBlocks.forEach((b, idx) => order.set(b.structurePath, idx))
+      const map = new Map<string, DetectedField[]>()
+      for (const f of detectedFields) {
+        const sp = f.structurePath
+        if (!sp) continue
+        const arr = map.get(sp) || []
+        arr.push(f)
+        map.set(sp, arr)
+      }
+      const groups = Array.from(map.entries()).map(([structurePath, fields]) => {
+        const block = templateBlocks.find((b) => b.structurePath === structurePath) || null
+        return { groupKey: structurePath, anchorSp: structurePath, block, fields }
+      })
+      groups.sort((a, c) => {
+        const ai = order.has(a.groupKey) ? (order.get(a.groupKey) as number) : Number.MAX_SAFE_INTEGER
+        const ci = order.has(c.groupKey) ? (order.get(c.groupKey) as number) : Number.MAX_SAFE_INTEGER
+        if (ai !== ci) return ai - ci
+        return a.groupKey.localeCompare(c.groupKey, 'zh-Hans-CN')
+      })
+      return groups
+    }
+
+    const groups: { groupKey: string; anchorSp: string; blocks: Block[] }[] = []
+    let seq = 0
+    for (const b of templateBlocks) {
+      const anchorSp = firstLevelKey(b.structurePath)
+      if (!anchorSp) continue
+      const last = groups[groups.length - 1]
+      if (!last || last.anchorSp !== anchorSp) {
+        seq += 1
+        groups.push({ groupKey: `${anchorSp}@@${seq}`, anchorSp, blocks: [b] })
+      } else {
+        last.blocks.push(b)
+      }
+    }
+
+    const fieldsBySp = new Map<string, DetectedField[]>()
     for (const f of detectedFields) {
       const sp = f.structurePath
       if (!sp) continue
-      const arr = map.get(sp) || []
+      const arr = fieldsBySp.get(sp) || []
       arr.push(f)
-      map.set(sp, arr)
+      fieldsBySp.set(sp, arr)
     }
-    const groups = Array.from(map.entries()).map(([structurePath, fields]) => {
-      const block = templateBlocks.find((b) => b.structurePath === structurePath) || null
-      return { structurePath, block, fields }
-    })
-    groups.sort((a, c) => {
-      const ai = order.has(a.structurePath) ? (order.get(a.structurePath) as number) : Number.MAX_SAFE_INTEGER
-      const ci = order.has(c.structurePath) ? (order.get(c.structurePath) as number) : Number.MAX_SAFE_INTEGER
-      if (ai !== ci) return ai - ci
-      return a.structurePath.localeCompare(c.structurePath, 'zh-Hans-CN')
-    })
-    return groups
-  }, [detectedFields, templateBlocks])
 
-  const allExpanded = blockGroups.length > 0 && blockGroups.every((g) => blockOpen[g.structurePath] === true)
+    return groups.map((g) => {
+      const blocks = g.blocks
+      const first = blocks[0] || null
+      const combinedText = blocks.map((b) => (b.text || '').trim()).filter(Boolean).join('\n')
+      const combinedHtml = blocks.map((b) => b.htmlFragment || '').filter(Boolean).join('')
+      const displayBlock =
+        blocks.length <= 1 || !first
+          ? first
+          : {
+              ...first,
+              blockId: `group:${g.groupKey}`,
+              structurePath: g.anchorSp,
+              text: combinedText,
+              htmlFragment: combinedHtml
+            }
+
+      const fields: DetectedField[] = []
+      for (const b of blocks) {
+        const arr = fieldsBySp.get(b.structurePath) || []
+        fields.push(...arr)
+      }
+
+      return { groupKey: g.groupKey, anchorSp: g.anchorSp, block: displayBlock, fields }
+    })
+  }, [detectedFields, groupMode, templateBlocks])
+
+  const allExpanded = blockGroups.length > 0 && blockGroups.every((g) => blockOpen[g.groupKey] === true)
 
   return (
     <div id="block-config-panel" style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
@@ -156,11 +215,18 @@ export default function BlockRulesPanel(props: Props) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             className="btn-secondary"
-            disabled={!hasDetected}
+            disabled={!hasBlocks}
+            onClick={() => setGroupMode((v) => (v === 'top' ? 'inputs' : 'top'))}
+          >
+            {groupMode === 'top' ? t('rules.blockRules.groupByInputs') : t('rules.blockRules.groupByTop')}
+          </button>
+          <button
+            className="btn-secondary"
+            disabled={blockGroups.length === 0}
             onClick={() => {
               setBlockOpen(() => {
                 const next: Record<string, boolean> = {}
-                for (const g of blockGroups) next[g.structurePath] = !allExpanded
+                for (const g of blockGroups) next[g.groupKey] = !allExpanded
                 return next
               })
             }}
@@ -178,26 +244,31 @@ export default function BlockRulesPanel(props: Props) {
           {t('rules.blockRules.loaded', {
             text: hasBlocks ? t('rules.blockRules.loaded.blocks', { count: templateBlocks.length }) : t('rules.blockRules.loaded.empty')
           })}
-          <br />
-          {t('rules.blockRules.onlyInputBlocks')}
+          {groupMode === 'inputs' && (
+            <>
+              <br />
+              {t('rules.blockRules.onlyInputBlocks')}
+            </>
+          )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('rules.blockRules.aiHint')}</div>
       </div>
 
-      {hasDetected ? (
+      {blockGroups.length > 0 ? (
         <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
           {blockGroups.map((g) => {
             const checkboxStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text)' }
-            const sp = g.structurePath
+            const groupId = g.groupKey
+            const sp = g.anchorSp
             const excerpt = g.block ? (g.block.text || '') : ''
             const blockTitle = getBlockTitle(g.block, t('rules.blockRules.blockFallbackTitle'))
             return (
               <details
-                key={sp}
-                open={blockOpen[sp] === true}
+                key={groupId}
+                open={blockOpen[groupId] === true}
                 onToggle={(e) => {
                   const el = e.currentTarget as HTMLDetailsElement
-                  setBlockOpen((prev) => ({ ...prev, [sp]: el.open }))
+                  setBlockOpen((prev) => ({ ...prev, [groupId]: el.open }))
                 }}
                 style={{ border: '1px solid var(--control-border)', borderRadius: 12, background: 'rgba(255,255,255,0.06)' }}
               >
@@ -235,7 +306,7 @@ export default function BlockRulesPanel(props: Props) {
                         }}
                       >
                         {g.block.htmlFragment ? (
-                          <div dangerouslySetInnerHTML={{ __html: g.block.htmlFragment }} />
+                          <div dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(g.block.htmlFragment) }} />
                         ) : /table/i.test(g.block.kind || '') || g.block.kind === 'table' ? (
                           renderTableFromText(g.block.text || '') || <div style={{ whiteSpace: 'pre-wrap' }}>{excerpt}</div>
                         ) : (

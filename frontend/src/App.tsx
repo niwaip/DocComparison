@@ -81,7 +81,6 @@ type AppState = {
   templateIndexLoading: boolean
   newTemplateId: string
   newTemplateName: string
-  newTemplateVersion: string
   templateDraftFile: File | null
   fieldRules: Record<string, FieldRuleState>
   blockPrompts: Record<string, string>
@@ -132,9 +131,8 @@ const appInitialState = (): AppState => {
   templateBlocks: [],
   templateIndex: [],
   templateIndexLoading: false,
-    newTemplateId: 'sales_contract_cn',
+    newTemplateId: '',
     newTemplateName: t('template.defaultName.sales'),
-    newTemplateVersion: new Date().toISOString().slice(0, 10),
   templateDraftFile: null,
   fieldRules: {},
   blockPrompts: {},
@@ -194,7 +192,6 @@ function App() {
     templateIndexLoading,
     newTemplateId,
     newTemplateName,
-    newTemplateVersion,
     templateDraftFile,
     fieldRules,
     blockPrompts,
@@ -248,7 +245,6 @@ function App() {
       setTemplateIndexLoading: makeSetter('templateIndexLoading'),
       setNewTemplateId: makeSetter('newTemplateId'),
       setNewTemplateName: makeSetter('newTemplateName'),
-      setNewTemplateVersion: makeSetter('newTemplateVersion'),
       setTemplateDraftFile: makeSetter('templateDraftFile'),
       setFieldRules: makeSetter('fieldRules'),
       setBlockPrompts: makeSetter('blockPrompts'),
@@ -290,7 +286,6 @@ function App() {
     setTemplateIndexLoading,
     setNewTemplateId,
     setNewTemplateName,
-    setNewTemplateVersion,
     setTemplateDraftFile,
     setFieldRules,
     setBlockPrompts,
@@ -359,8 +354,6 @@ function App() {
     generateTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
-    exportSkill,
-    importSkill,
     loadGlobalPrompt,
     saveGlobalPrompt
   } = useRulesConfigFlow({
@@ -383,7 +376,6 @@ function App() {
     setTemplateDraftFile,
     newTemplateId,
     newTemplateName,
-    newTemplateVersion,
     setRulesetLoading,
     fieldRules,
     setFieldRules,
@@ -679,14 +671,10 @@ function App() {
         loadTemplateSnapshot={loadTemplateSnapshot}
         renameTemplate={renameTemplate}
         deleteTemplate={deleteTemplate}
-        exportSkill={exportSkill}
-        importSkill={importSkill}
         newTemplateId={newTemplateId}
         setNewTemplateId={setNewTemplateId}
         newTemplateName={newTemplateName}
         setNewTemplateName={setNewTemplateName}
-        newTemplateVersion={newTemplateVersion}
-        setNewTemplateVersion={setNewTemplateVersion}
         generateTemplateSnapshot={generateTemplateSnapshot}
         templateBlocks={templateBlocks}
         detectedFields={detectedFields}

@@ -9,8 +9,6 @@ type Props = {
   loadTemplateSnapshot: (templateId: string) => Promise<void>
   renameTemplate: (templateId: string, name: string) => Promise<void>
   deleteTemplate: (templateId: string) => Promise<void>
-  exportSkill: (templateId: string, version?: string) => Promise<void>
-  importSkill: (file: File, overwriteSameVersion: boolean) => Promise<void>
   reportError: (e: unknown) => void
 
   templateId: string
@@ -20,8 +18,6 @@ type Props = {
   setNewTemplateId: (v: string) => void
   newTemplateName: string
   setNewTemplateName: (v: string) => void
-  newTemplateVersion: string
-  setNewTemplateVersion: (v: string) => void
   generateTemplateSnapshot: (file: File) => void
 }
 
@@ -34,50 +30,36 @@ export default function TemplateLibraryPanel(props: Props) {
     loadTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
-    exportSkill,
-    importSkill,
     reportError,
     setTemplateId,
     setNewTemplateId,
     setNewTemplateName,
-    setNewTemplateVersion,
     newTemplateId,
     newTemplateName,
-    newTemplateVersion,
     generateTemplateSnapshot
   } = props
 
   const [snapshotFileName, setSnapshotFileName] = React.useState('')
-  const [importFileName, setImportFileName] = React.useState('')
+  const [editingExisting, setEditingExisting] = React.useState(false)
+  const lastAutoNameRef = React.useRef<string>('')
+
+  const baseNameFromFileName = React.useCallback((name: string) => {
+    const s = (name || '').trim()
+    if (!s) return ''
+    const withoutPath = s.split(/[/\\]/).slice(-1)[0] || s
+    return withoutPath.replace(/\.(docx|doc)\s*$/i, '')
+  }, [])
 
   return (
     <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 800 }}>{t('rules.templateLibrary.title')}</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input
-            id="skill-import-upload"
-            type="file"
-            accept=".cskill"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (!f) return
-              setImportFileName(f.name)
-              const overwrite = window.confirm(t('rules.templateLibrary.importOverwrite'))
-              importSkill(f, overwrite).catch(reportError)
-              e.currentTarget.value = ''
-            }}
-          />
-          <label htmlFor="skill-import-upload" className="btn-secondary" style={{ height: 34, padding: '0 10px', display: 'inline-flex', alignItems: 'center' }}>
-            {t('rules.templateLibrary.import')}
-          </label>
           <button className="btn-secondary" onClick={reloadTemplateIndex} disabled={templateIndexLoading}>
             {templateIndexLoading ? t('common.loading') : t('rules.templateLibrary.refresh')}
           </button>
         </div>
       </div>
-      {importFileName && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>{importFileName}</div>}
 
       <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 12, background: 'rgba(255,255,255,0.06)' }}>
@@ -88,19 +70,16 @@ export default function TemplateLibraryPanel(props: Props) {
                 <div key={tpl.templateId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--control-border)', borderRadius: 10, padding: '8px 10px', background: 'var(--control-bg)' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 750, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {tpl.templateId} · {t('rules.templateLibrary.versions', { count: tpl.versions.length })}
-                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.templateId}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <button
                       className="btn-secondary"
                       onClick={async () => {
+                        setEditingExisting(true)
                         setTemplateId(tpl.templateId)
                         setNewTemplateId(tpl.templateId)
                         setNewTemplateName(tpl.name || tpl.templateId)
-                        const latestVersion = (Array.isArray(tpl.versions) ? [...tpl.versions].sort() : []).slice(-1)[0]
-                        if (latestVersion) setNewTemplateVersion(latestVersion)
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
                         } catch (e) {
@@ -110,20 +89,6 @@ export default function TemplateLibraryPanel(props: Props) {
                       style={{ height: 34, padding: '0 10px' }}
                     >
                       {t('common.edit')}
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      onClick={async () => {
-                        const latestVersion = (Array.isArray(tpl.versions) ? [...tpl.versions].sort() : []).slice(-1)[0]
-                        try {
-                          await exportSkill(tpl.templateId, latestVersion)
-                        } catch (e) {
-                          reportError(e)
-                        }
-                      }}
-                      style={{ height: 34, padding: '0 10px' }}
-                    >
-                      {t('rules.templateLibrary.export')}
                     </button>
                     <button
                       className="btn-secondary"
@@ -157,6 +122,7 @@ export default function TemplateLibraryPanel(props: Props) {
                     <button
                       className="btn-secondary"
                       onClick={async () => {
+                        setEditingExisting(false)
                         setTemplateId(tpl.templateId)
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
@@ -181,11 +147,14 @@ export default function TemplateLibraryPanel(props: Props) {
           <div style={{ fontWeight: 750, marginBottom: 8 }}>{t('rules.templateLibrary.generate')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8, alignItems: 'center' }}>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>templateId</div>
-            <input value={newTemplateId} onChange={(e) => setNewTemplateId(e.target.value)} style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }} />
+            <input
+              value={newTemplateId}
+              onChange={(e) => setNewTemplateId(e.target.value)}
+              disabled={editingExisting}
+              style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }}
+            />
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.name')}</div>
             <input value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }} />
-            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.version')}</div>
-            <input value={newTemplateVersion} onChange={(e) => setNewTemplateVersion(e.target.value)} style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }} />
           </div>
           <div style={{ marginTop: 10 }}>
             <input
@@ -197,6 +166,12 @@ export default function TemplateLibraryPanel(props: Props) {
                 const f = e.target.files?.[0]
                 if (!f) return
                 setSnapshotFileName(f.name)
+                if (!editingExisting) setNewTemplateId('')
+                const nextAuto = baseNameFromFileName(f.name)
+                if (nextAuto) {
+                  lastAutoNameRef.current = nextAuto
+                  setNewTemplateName(nextAuto)
+                }
                 generateTemplateSnapshot(f)
                 window.setTimeout(() => {
                   const el = document.getElementById('block-config-panel')

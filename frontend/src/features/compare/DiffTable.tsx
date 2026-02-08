@@ -2,6 +2,7 @@ import React from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useI18n } from '../../i18n'
 import type { AlignmentRow, Block, CheckAiResult, CheckRunResponse } from '../../domain/types'
+import { applyIndentDataAttrs } from '../../domain/textUtils'
 import { checkDomId } from '../check/checkDom'
 
 type Props = {
@@ -241,9 +242,9 @@ const DiffTable = React.forwardRef<DiffTableHandle, Props>(function DiffTable(pr
                   {leftBlock ? (
                     <div>
                       {row.kind === 'changed' && row.leftDiffHtml ? (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: row.leftDiffHtml }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(row.leftDiffHtml, { indentNumbered: true }) }} />
                       ) : (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: leftBlock.htmlFragment }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(leftBlock.htmlFragment, { indentNumbered: true }) }} />
                       )}
                     </div>
                   ) : null}
@@ -255,9 +256,9 @@ const DiffTable = React.forwardRef<DiffTableHandle, Props>(function DiffTable(pr
                   {rightBlock ? (
                     <div>
                       {row.kind === 'changed' && row.rightDiffHtml ? (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: row.rightDiffHtml }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(row.rightDiffHtml, { indentNumbered: true }) }} />
                       ) : (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: rightBlock.htmlFragment }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(rightBlock.htmlFragment, { indentNumbered: true }) }} />
                       )}
                     </div>
                   ) : null}
@@ -344,9 +345,9 @@ const DiffTable = React.forwardRef<DiffTableHandle, Props>(function DiffTable(pr
                   {leftBlock ? (
                     <div>
                       {row.kind === 'changed' && row.leftDiffHtml ? (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: row.leftDiffHtml }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(row.leftDiffHtml, { indentNumbered: true }) }} />
                       ) : (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: leftBlock.htmlFragment }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(leftBlock.htmlFragment, { indentNumbered: true }) }} />
                       )}
                     </div>
                   ) : null}
@@ -358,9 +359,9 @@ const DiffTable = React.forwardRef<DiffTableHandle, Props>(function DiffTable(pr
                   {rightBlock ? (
                     <div>
                       {row.kind === 'changed' && row.rightDiffHtml ? (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: row.rightDiffHtml }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(row.rightDiffHtml, { indentNumbered: true }) }} />
                       ) : (
-                        <div className="block-content" dangerouslySetInnerHTML={{ __html: rightBlock.htmlFragment }} />
+                        <div className="block-content" dangerouslySetInnerHTML={{ __html: applyIndentDataAttrs(rightBlock.htmlFragment, { indentNumbered: true }) }} />
                       )}
                     </div>
                   ) : null}

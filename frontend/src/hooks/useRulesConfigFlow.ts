@@ -41,7 +41,6 @@ type Params = {
 
   newTemplateId: string
   newTemplateName: string
-  newTemplateVersion: string
 
   setRulesetLoading: (v: boolean) => void
   fieldRules: Record<string, FieldRuleState>
@@ -79,7 +78,6 @@ export const useRulesConfigFlow = (p: Params) => {
     setTemplateDraftFile,
     newTemplateId,
     newTemplateName,
-    newTemplateVersion,
     setRulesetLoading,
     fieldRules,
     setFieldRules,
@@ -256,7 +254,6 @@ export const useRulesConfigFlow = (p: Params) => {
       const today = new Date().toISOString().slice(0, 10)
       const draftTemplateId = newTemplateId.trim()
       const draftName = (newTemplateName.trim() || draftTemplateId).trim()
-      const draftVersion = (newTemplateVersion.trim() || today).trim()
       let targetTemplateId = templateId
       let nameOverride: string | null = null
       let versionOverride: string | null = null
@@ -267,7 +264,7 @@ export const useRulesConfigFlow = (p: Params) => {
           const snapshot = await api.templates.generate({
             templateId: draftTemplateId,
             name: draftName || draftTemplateId,
-            version: draftVersion || today,
+            version: today,
             file: templateDraftFile
           })
           if (Array.isArray(snapshot.blocks)) setTemplateBlocks(snapshot.blocks)
@@ -279,7 +276,7 @@ export const useRulesConfigFlow = (p: Params) => {
         setTemplateId(draftTemplateId)
         targetTemplateId = draftTemplateId
         nameOverride = draftName || draftTemplateId
-        versionOverride = draftVersion || today
+        versionOverride = today
       }
 
       let existing: Ruleset | null = null
@@ -398,7 +395,6 @@ export const useRulesConfigFlow = (p: Params) => {
     lang,
     newTemplateId,
     newTemplateName,
-    newTemplateVersion,
     reloadTemplateIndex,
     reportError,
     setError,
@@ -436,29 +432,6 @@ export const useRulesConfigFlow = (p: Params) => {
       if (templateId === id) setTemplateId('sales_contract_cn')
     },
     [errText, reloadTemplateIndex, setTemplateId, t, templateId]
-  )
-
-  const exportSkill = React.useCallback(
-    async (templateId: string, version?: string) => {
-      try {
-        await api.skills.export(templateId, version)
-      } catch (e) {
-        throw new Error(t('error.skill.export', { message: errText(e) }))
-      }
-    },
-    [errText, t]
-  )
-
-  const importSkill = React.useCallback(
-    async (file: File, overwriteSameVersion: boolean) => {
-      try {
-        await api.skills.import(file, overwriteSameVersion)
-      } catch (e) {
-        throw new Error(t('error.skill.import', { message: errText(e) }))
-      }
-      await reloadTemplateIndex()
-    },
-    [errText, reloadTemplateIndex, t]
   )
 
   const loadGlobalPrompt = React.useCallback(async () => {
@@ -546,8 +519,6 @@ export const useRulesConfigFlow = (p: Params) => {
     generateTemplateSnapshot,
     renameTemplate,
     deleteTemplate,
-    exportSkill,
-    importSkill,
     loadGlobalPrompt,
     saveGlobalPrompt
   }

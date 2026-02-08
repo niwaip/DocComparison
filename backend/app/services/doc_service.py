@@ -72,57 +72,90 @@ class DocService:
             return str(n) # Fallback
 
     @staticmethod
-    def _load_numbering_formats(doc: Document) -> Dict[int, Dict[int, Tuple[str, str]]]:
+    def _load_numbering_meta(doc: Document) -> Tuple[Dict[int, Dict[int, Tuple[str, str]]], Dict[int, str], Dict[int, Dict[int, int]]]:
         """
-        Returns a map: numId -> {ilvl: (numFmt, lvlText)}
+        Returns:
+          - formats: numId -> {ilvl: (numFmt, lvlText)}
+          - num_to_abs: numId -> abstractNumId
+          - starts: numId -> {ilvl: startVal}
         """
-        formats = {} # numId -> {ilvl: (fmt, text)}
+        formats: Dict[int, Dict[int, Tuple[str, str]]] = {}
+        num_to_abs: Dict[int, str] = {}
+        starts: Dict[int, Dict[int, int]] = {}
         try:
             numbering_part = doc.part.numbering_part
         except:
-            return {}
+            return {}, {}, {}
 
-        # 1. Map numId -> abstractNumId
-        num_map = {}
-        for num in numbering_part.element.findall(qn('w:num')):
-            num_id = num.numId
-            # abstractNumId is a child element val
-            abs_ref = num.find(qn('w:abstractNumId'))
-            if abs_ref is not None:
-                num_map[num_id] = abs_ref.get(qn('w:val'))
-
-        # 2. Map abstractNumId -> {ilvl: (fmt, text)}
-        abs_formats = {}
+        abs_meta: Dict[str, Dict[int, Tuple[str, str, int]]] = {}
         for abstract_num in numbering_part.element.findall(qn('w:abstractNum')):
             abs_id = abstract_num.get(qn('w:abstractNumId'))
-            lvl_map = {}
-            
+            if abs_id is None:
+                continue
+            lvl_map: Dict[int, Tuple[str, str, int]] = {}
             for lvl in abstract_num.findall(qn('w:lvl')):
                 ilvl_attr = lvl.get(qn('w:ilvl'))
                 if ilvl_attr is None:
                     continue
                 ilvl = int(ilvl_attr)
-                
+
                 num_fmt = "decimal"
                 fmt_elem = lvl.find(qn('w:numFmt'))
                 if fmt_elem is not None:
                     num_fmt = fmt_elem.get(qn('w:val'))
-                
+
                 lvl_text = "%1."
                 txt_elem = lvl.find(qn('w:lvlText'))
                 if txt_elem is not None:
                     lvl_text = txt_elem.get(qn('w:val'))
-                
-                lvl_map[ilvl] = (num_fmt, lvl_text)
-            
-            abs_formats[abs_id] = lvl_map
-            
-        # 3. Combine
-        for num_id, abs_id in num_map.items():
-            if abs_id in abs_formats:
-                formats[num_id] = abs_formats[abs_id]
-                
-        return formats
+
+                start_val = 1
+                start_elem = lvl.find(qn('w:start'))
+                if start_elem is not None and start_elem.get(qn('w:val')) is not None:
+                    try:
+                        start_val = int(start_elem.get(qn('w:val')))
+                    except Exception:
+                        start_val = 1
+
+                lvl_map[ilvl] = (num_fmt, lvl_text, start_val)
+
+            abs_meta[str(abs_id)] = lvl_map
+
+        for num in numbering_part.element.findall(qn('w:num')):
+            try:
+                num_id = int(num.numId)
+            except Exception:
+                continue
+            abs_ref = num.find(qn('w:abstractNumId'))
+            if abs_ref is not None:
+                abs_id = abs_ref.get(qn('w:val'))
+                if abs_id is None:
+                    continue
+                num_to_abs[num_id] = str(abs_id)
+
+                meta = abs_meta.get(str(abs_id)) or {}
+                fmt_out: Dict[int, Tuple[str, str]] = {}
+                start_out: Dict[int, int] = {}
+                for ilvl, (fmt, txt, st) in meta.items():
+                    fmt_out[ilvl] = (fmt, txt)
+                    start_out[ilvl] = int(st) if st else 1
+
+                for lvl_override in num.findall(qn("w:lvlOverride")):
+                    ilvl_attr = lvl_override.get(qn("w:ilvl"))
+                    if ilvl_attr is None:
+                        continue
+                    ilvl = int(ilvl_attr)
+                    so = lvl_override.find(qn("w:startOverride"))
+                    if so is not None and so.get(qn("w:val")) is not None:
+                        try:
+                            start_out[ilvl] = int(so.get(qn("w:val")))
+                        except Exception:
+                            pass
+
+                formats[num_id] = fmt_out
+                starts[num_id] = start_out
+
+        return formats, num_to_abs, starts
 
     @staticmethod
     def parse_docx(file_path: str) -> List[Block]:
@@ -137,7 +170,7 @@ class DocService:
         nodes = []
         
         # Load Numbering Formats
-        numbering_formats = DocService._load_numbering_formats(doc)
+        numbering_formats, num_to_abs, numbering_starts = DocService._load_numbering_meta(doc)
         
         # Per-List Counter: numId -> {ilvl: count}
         list_states = {}
@@ -210,6 +243,10 @@ class DocService:
                     counters = list_states[num_id]
                     
                     # Increment current level
+                    if ilvl not in counters:
+                        start_val = numbering_starts.get(num_id, {}).get(ilvl)
+                        if start_val is not None:
+                            counters[ilvl] = max(0, int(start_val) - 1)
                     counters[ilvl] = counters.get(ilvl, 0) + 1
                     
                     # Reset deeper levels
@@ -278,7 +315,7 @@ class DocService:
                         lvl_idx = list_states.get(num_id, {}).get(i, 0)
                         # Ensure 0-based index for path
                         idx_val = max(0, lvl_idx - 1)
-                        path_parts.append(f"ol[0]")
+                        path_parts.append(f"ol[{num_id}]")
                         path_parts.append(f"li[{idx_val}]")
                     structure_path = ".".join(path_parts)
                 else:
@@ -292,27 +329,20 @@ class DocService:
                 
                 # Prepend prefix to text and HTML
                 final_text = prefix + text
-                
-                # Apply Indentation Styles
-                style_parts = []
-                if indent_pt is not None and indent_pt > 0:
-                     style_parts.append(f"padding-left: {indent_pt}pt")
-                
-                if first_line_indent_pt is not None and first_line_indent_pt != 0:
-                     style_parts.append(f"text-indent: {first_line_indent_pt}pt")
-                
                 style_attr = ""
-                if style_parts:
-                    style_attr = f" style='{'; '.join(style_parts)}'"
 
                 html_inner: str
                 has_underlined_run = any(bool(getattr(r, "underline", False)) for r in block.runs)
                 if has_underlined_run:
                     run_parts: List[str] = []
+                    stripped_leading = False
                     for r in block.runs:
                         t = r.text or ""
                         if t == "":
                             continue
+                        if not stripped_leading and not bool(getattr(r, "underline", False)):
+                            t = re.sub(r"^[\s\u00a0\u3000]+", "", t)
+                            stripped_leading = True
                         escaped = html.escape(t, quote=False)
                         style: List[str] = []
                         if getattr(r, "bold", False):
@@ -332,24 +362,19 @@ class DocService:
                     html_inner = html.escape(final_text, quote=False)
                     html_content = f"<{html_tag}{style_attr}>{html_inner}</{html_tag}>"
 
-                # Calculate visual indentation for diffing (approx 6pt per space)
-                visual_indent = ""
-                if indent_pt and indent_pt > 0:
-                    num_spaces = int(indent_pt / 6)
-                    visual_indent = " " * num_spaces
-
                 nodes.append({
                     "kind": kind,
                     "headingLevel": level,
                     "structurePath": structure_path,
                     "html": html_content,
                     "html_inner": html_inner,
-                    "text": visual_indent + normalize_text(final_text),
+                    "text": normalize_text(final_text),
                     "ilvl": ilvl if kind == BlockKind.LIST_ITEM else None,
                     "indent_pt": indent_pt,
                     "first_line_indent_pt": first_line_indent_pt,
                     "num_fmt": num_fmt if kind == BlockKind.LIST_ITEM else None,
-                    "num_id": num_id if kind == BlockKind.LIST_ITEM else None
+                    "num_id": num_id if kind == BlockKind.LIST_ITEM else None,
+                    "abs_id": num_to_abs.get(num_id) if kind == BlockKind.LIST_ITEM and num_id is not None else None
                 })
                 
             elif isinstance(block, Table):
@@ -407,12 +432,12 @@ class DocService:
             
         # Restore Numbering Logic - DISABLED because we do it inline now
         # DocService._restore_heading_numbering(nodes)
-        
-        # Normalize Indentation
+
+        # Normalize Indentation (data only; rendering happens in frontend)
         DocService._normalize_indentation(nodes)
         
         # Aggressive Section Merging (Top-Level Grouping)
-        return DocService._merge_nodes(nodes)
+        return DocService._merge_nodes(doc, nodes)
 
     @staticmethod
     def _normalize_indentation(nodes: List[Dict]):
@@ -428,7 +453,7 @@ class DocService:
         # Pass 1: Collect Stats
         for n in nodes:
             if n['kind'] == BlockKind.LIST_ITEM and n.get('num_id') is not None:
-                key = (n['num_id'], n['ilvl'])
+                key = (n.get('abs_id') or n['num_id'], n['ilvl'])
                 if key not in groups:
                     groups[key] = {'max_left': 0, 'max_first': 0}
                 
@@ -445,7 +470,7 @@ class DocService:
         # Pass 2: Apply Stats & Heuristics
         for n in nodes:
             if n['kind'] == BlockKind.LIST_ITEM and n.get('num_id') is not None:
-                key = (n['num_id'], n['ilvl'])
+                key = (n.get('abs_id') or n['num_id'], n['ilvl'])
                 stats = groups.get(key)
                 if stats:
                     # Apply Group Max
@@ -465,59 +490,38 @@ class DocService:
                         # unless it was already set.
                         if n['first_line_indent_pt'] == 0:
                             n['first_line_indent_pt'] = 0 # Explicit 0
-                            
-                # Re-generate HTML with new indentation
-                # Note: We need to regenerate the HTML because we baked style into it previously
-                # Actually, we can just rebuild the style attribute part or rebuild the whole tag
-                # But 'html' field currently contains the full tag <p style=...>...</p>
-                # We need to regenerate it.
-                
-                # Helper to regenerate HTML
-                prefix = "" # We lost the prefix? No, we didn't store prefix separately.
-                # But 'text' contains prefix + content.
-                # And 'html' contains prefix + content.
-                # We just need to wrap 'text' in new tags.
-                # WAIT! 'text' in node dict is "final_text" (includes prefix).
-                # So we can just wrap n['text'].
-                
-                html_tag = 'p'
-                if n['kind'] == BlockKind.HEADING and n.get('headingLevel'):
-                    html_tag = f'h{n["headingLevel"]}'
-                
-                style_parts = []
-                left = n['indent_pt']
-                first = n['first_line_indent_pt']
-                
-                if left is not None and left > 0:
-                     style_parts.append(f"padding-left: {left}pt")
-                
-                if first is not None and first != 0:
-                     style_parts.append(f"text-indent: {first}pt")
-                
-                style_attr = ""
-                if style_parts:
-                    style_attr = f" style='{'; '.join(style_parts)}'"
-                
-                # Update Text with new indentation
-                clean_text = n['text'].strip()
-                visual_indent = ""
-                indent_val = n.get('indent_pt')
-                if indent_val and indent_val > 0:
-                    num_spaces = int(indent_val / 6)
-                    visual_indent = " " * num_spaces
-                n['text'] = visual_indent + clean_text
-
-                # Update HTML (using clean text to avoid double indentation)
-                # Note: 'clean_text' includes the numbering prefix (e.g. "1. Content")
-                inner = n.get("html_inner")
-                if inner is None:
-                    inner = html.escape(clean_text, quote=False)
-                    n["html_inner"] = inner
-                n['html'] = f"<{html_tag}{style_attr}>{inner}</{html_tag}>"
- 
                 
     @staticmethod
-    def _merge_nodes(nodes: List[Dict]) -> List[Block]:
+    def _merge_nodes(doc: Document, nodes: List[Dict]) -> List[Block]:
+        chinese_formats = ["chineseCounting", "chineseCountingThousand", "ideographTraditional", "japaneseCounting", "japaneseCountingThousand"]
+
+        def _is_soft_section_title_text(text: str) -> bool:
+            t = (text or "").strip()
+            if not t:
+                return False
+            if re.match(r"^\s*[一二三四五六七八九十百千]+、", t):
+                return True
+            if re.match(r"^\s*第[一二三四五六七八九十0-9]+[条章]", t):
+                return True
+            if re.match(r"^\s*(合同附则|合同附則)\s*[：:]?\s*$", t):
+                return True
+            return False
+
+        def _is_soft_section_title_node(node: Optional[Dict]) -> bool:
+            if not node:
+                return False
+            if node.get("kind") == BlockKind.HEADING and node.get("headingLevel") == 1:
+                return True
+            if node.get("kind") == BlockKind.PARAGRAPH and _is_soft_section_title_text(node.get("text", "")):
+                return True
+            if node.get("kind") == BlockKind.LIST_ITEM:
+                ilvl = node.get("ilvl") or 0
+                if ilvl == 0 and node.get("num_fmt") in chinese_formats:
+                    return True
+                if _is_soft_section_title_text(node.get("text", "")):
+                    return True
+            return False
+
         merged_nodes = []
         current_node = None
         
@@ -544,32 +548,31 @@ class DocService:
                      # Always merge sub-levels
                      is_start = False
                  else:
-                     # Level 0 Logic
-                     # Check for Chinese Parent -> Decimal Child pattern (e.g. Sales Contract)
-                     current_num_fmt = n.get('num_fmt')
-                     
-                     previous_node_fmt = None
-                     if current_node and current_node.get('kind') == BlockKind.LIST_ITEM:
-                         previous_node_fmt = current_node.get('num_fmt')
-                     
-                     chinese_formats = ["chineseCounting", "chineseCountingThousand", "ideographTraditional", "japaneseCounting", "japaneseCountingThousand"]
-                     
-                     is_chinese_parent = previous_node_fmt in chinese_formats
-                     is_decimal_child = current_num_fmt == "decimal"
-                     
-                     if is_chinese_parent and is_decimal_child:
-                         is_start = False # Merge sibling decimal into Chinese parent
+                     current_is_section_title = _is_soft_section_title_node(current_node)
+                     if current_is_section_title:
+                         is_start = _is_soft_section_title_node(n)
                      else:
-                         is_start = True # Default behavior for Level 0 (Start new block)
+                         # Level 0 Logic
+                         # Check for Chinese Parent -> Decimal Child pattern (e.g. Sales Contract)
+                         current_num_fmt = n.get('num_fmt')
+                         
+                         previous_node_fmt = None
+                         if current_node and current_node.get('kind') == BlockKind.LIST_ITEM:
+                             previous_node_fmt = current_node.get('num_fmt')
+                         
+                         is_chinese_parent = previous_node_fmt in chinese_formats
+                         is_decimal_child = current_num_fmt == "decimal"
+                         
+                         if is_chinese_parent and is_decimal_child:
+                             is_start = False # Merge sibling decimal into Chinese parent
+                         else:
+                             is_start = True # Default behavior for Level 0 (Start new block)
             
             # Fallback Regex - Only if we haven't decided it's a child
             # If logic above said is_start=False (Child), we respect that.
             # If logic above said nothing (e.g. Paragraph), we check regex.
             if n['kind'] == BlockKind.PARAGRAPH:
-                 if re.match(r'^\s*[一二三四五六七八九十]+、', t):
-                     is_start = True
-                     current_top_indent = indent
-                 elif re.match(r'^\s*第[一二三四五六七八九十0-9]+[条章]', t):
+                 if _is_soft_section_title_text(t):
                      is_start = True
                      current_top_indent = indent
 
@@ -590,29 +593,114 @@ class DocService:
         if current_node:
             merged_nodes.append(current_node)
         
-        # Build Blocks
-        blocks = []
+        blocks: List[Block] = []
         next_block_index = 1
-        
+
         for n in merged_nodes:
-            if not n['text'] and n['kind'] != BlockKind.TABLE:
+            if not n["text"] and n["kind"] != BlockKind.TABLE:
                 continue
-                
+
             block_id = f"b_{str(next_block_index).zfill(4)}"
             next_block_index += 1
-            
+
             stable_key = sha1(f"{n['kind']}:{n['text']}")
-            
-            blocks.append(Block(
-                blockId=block_id,
-                kind=n['kind'],
-                structurePath=n['structurePath'],
-                stableKey=stable_key,
-                text=n['text'],
-                htmlFragment=n['html'],
-                meta=BlockMeta(headingLevel=n['headingLevel'])
-            ))
-            
+
+            blocks.append(
+                Block(
+                    blockId=block_id,
+                    kind=n["kind"],
+                    structurePath=n["structurePath"],
+                    stableKey=stable_key,
+                    text=n["text"],
+                    htmlFragment=n["html"],
+                    meta=BlockMeta(headingLevel=n["headingLevel"]),
+                )
+            )
+
+        extra_texts: List[str] = []
+        def _is_page_marker(s: str) -> bool:
+            t = (s or "").strip()
+            if not t:
+                return True
+            compact = re.sub(r"\s+", "", t)
+            if re.fullmatch(r"\d{1,4}", compact):
+                return True
+            if re.fullmatch(r"[—-]{1,6}\d{1,4}[—-]{1,6}", compact):
+                return True
+            if re.search(r"第\s*\d+\s*页", t):
+                return True
+            if re.search(r"\bpage\s*\d+\b", t, flags=re.IGNORECASE):
+                return True
+            return False
+        try:
+            doc_el = doc.element
+            for txbx in doc_el.iter(qn("w:txbxContent")):
+                for p in txbx.iter(qn("w:p")):
+                    parts: List[str] = []
+                    for t in p.iter(qn("w:t")):
+                        if t.text:
+                            parts.append(t.text)
+                    raw = "".join(parts).strip()
+                    if raw and not _is_page_marker(raw):
+                        extra_texts.append(normalize_text(raw))
+        except Exception:
+            extra_texts = []
+
+        try:
+            for sec in getattr(doc, "sections", []) or []:
+                header = getattr(sec, "header", None)
+                footer = getattr(sec, "footer", None)
+                header_paras = list(getattr(header, "paragraphs", []) or []) if header is not None else []
+                footer_paras = list(getattr(footer, "paragraphs", []) or []) if footer is not None else []
+                for p in header_paras + footer_paras:
+                    s = (p.text or "").strip()
+                    if s and not _is_page_marker(s):
+                        extra_texts.append(normalize_text(s))
+        except Exception:
+            pass
+
+        if extra_texts:
+            def _norm_key(s: str) -> str:
+                return re.sub(r"\s+", "", (s or "")).strip()
+
+            seen: set[str] = set()
+            for n in nodes:
+                try:
+                    nt = (n.get("text") or "").strip()
+                except Exception:
+                    nt = ""
+                if not nt:
+                    continue
+                for line in nt.split("\n"):
+                    k = _norm_key(line)
+                    if k:
+                        seen.add(k)
+
+            unique: List[str] = []
+            for s in extra_texts:
+                k = _norm_key(s)
+                if not k or k in seen:
+                    continue
+                seen.add(k)
+                unique.append(s)
+
+            if unique:
+                joined_text = "\n".join(unique)
+                joined_html = "".join([f"<p>{html.escape(s, quote=False)}</p>" for s in unique])
+                block_id = f"b_{str(next_block_index).zfill(4)}"
+                next_block_index += 1
+                blocks.append(
+                    Block(
+                        blockId=block_id,
+                        kind=BlockKind.PARAGRAPH,
+                        structurePath="body.extra",
+                        stableKey=sha1(f"{BlockKind.PARAGRAPH}:{joined_text}"),
+                        text=joined_text,
+                        htmlFragment=joined_html,
+                        meta=BlockMeta(headingLevel=None),
+                    )
+                )
+
         return blocks
     
     @staticmethod

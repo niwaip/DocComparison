@@ -175,6 +175,7 @@ def list_templates() -> List[TemplateSnapshot]:
 
 def list_template_index() -> List[TemplateListItem]:
     by_id: Dict[str, TemplateListItem] = {}
+    best_name_by_id: Dict[str, Tuple[str, str]] = {}
     for t in list_templates():
         item = by_id.get(t.templateId)
         if item is None:
@@ -182,9 +183,15 @@ def list_template_index() -> List[TemplateListItem]:
             by_id[t.templateId] = item
         if t.version not in item.versions:
             item.versions.append(t.version)
-        if t.name and (not item.name or item.name == item.templateId):
-            item.name = t.name
+        if t.name:
+            prev = best_name_by_id.get(t.templateId)
+            if prev is None or t.version > prev[0]:
+                best_name_by_id[t.templateId] = (t.version, t.name)
     out = list(by_id.values())
+    for x in out:
+        best = best_name_by_id.get(x.templateId)
+        if best is not None:
+            x.name = best[1]
     for x in out:
         x.versions.sort()
     out.sort(key=lambda z: z.templateId)

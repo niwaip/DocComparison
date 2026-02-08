@@ -67,6 +67,22 @@ def extract_wrapper(html_fragment: str) -> Tuple[str, str]:
     
     return start_tag, end_tag
 
+def _split_block_line_wrappers(html_fragment: str) -> List[Tuple[str, str]]:
+    if not html_fragment:
+        return []
+
+    pattern = re.compile(
+        r"(<(?P<tag>p|h[1-6])\b[^>]*>.*?</(?P=tag)>)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    wrappers: List[Tuple[str, str]] = []
+    for m in pattern.finditer(html_fragment):
+        frag = m.group(1) or ""
+        if not frag:
+            continue
+        wrappers.append(extract_wrapper(frag))
+    return wrappers
+
 def compute_inline_diff(text1: str, text2: str) -> Tuple[str, str]:
     """
     Compute inline diff and return (left_inner_html, right_inner_html).
@@ -228,7 +244,17 @@ def compute_block_aligned_diff(
     left_leaders = _extract_underline_leaders(left_html_fragment)
     right_leaders = _extract_underline_leaders(right_html_fragment)
 
-    rows: List[Tuple[str, str, str]] = []
+    left_wrappers = _split_block_line_wrappers(left_html_fragment)
+    right_wrappers = _split_block_line_wrappers(right_html_fragment)
+
+    def _wrap_line(inner_html: str, wrappers: List[Tuple[str, str]], idx: Optional[int]) -> str:
+        if idx is not None and 0 <= idx < len(wrappers):
+            start_tag, end_tag = wrappers[idx]
+        else:
+            start_tag, end_tag = "<p>", "</p>"
+        return f"{start_tag}{inner_html}{end_tag}"
+
+    rows: List[Tuple[str, str, str, Optional[int], Optional[int]]] = []
 
     for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
@@ -243,7 +269,7 @@ def compute_block_aligned_diff(
                     l_inner += f"<span style=\"text-decoration: underline\">{left_leaders[l_key]}</span>"
                 if r_key in right_leaders:
                     r_inner += f"<span style=\"text-decoration: underline\">{right_leaders[r_key]}</span>"
-                rows.append((l_inner, r_inner, "equal"))
+                rows.append((l_inner, r_inner, "equal", i1 + k, j1 + k))
         elif tag == "replace":
             count = min(i2 - i1, j2 - j1)
             for k in range(count):
@@ -256,33 +282,35 @@ def compute_block_aligned_diff(
                     l_inner += f"<span style=\"text-decoration: underline\">{left_leaders[l_key]}</span>"
                 if r_key in right_leaders:
                     r_inner += f"<span style=\"text-decoration: underline\">{right_leaders[r_key]}</span>"
-                rows.append((l_inner, r_inner, "changed"))
+                rows.append((l_inner, r_inner, "changed", i1 + k, j1 + k))
             if (i2 - i1) > count:
                 for k in range(count, i2 - i1):
                     l = left_lines[i1 + k]
                     l_inner = f"<del style='background:#ffebe9;color:#c92a2a;text-decoration:line-through;'>{escape_html(l)}</del>"
-                    rows.append((l_inner, "&nbsp;", "deleted"))
+                    rows.append((l_inner, "&nbsp;", "deleted", i1 + k, None))
             if (j2 - j1) > count:
                 for k in range(count, j2 - j1):
                     r = right_lines[j1 + k]
                     r_inner = f"<ins style='background:#e6ffec;color:#216e39;text-decoration:none;'>{escape_html(r)}</ins>"
-                    rows.append(("&nbsp;", r_inner, "inserted"))
+                    rows.append(("&nbsp;", r_inner, "inserted", None, j1 + k))
         elif tag == "delete":
             for k in range(i1, i2):
                 l = left_lines[k]
                 l_inner = f"<del style='background:#ffebe9;color:#c92a2a;text-decoration:line-through;'>{escape_html(l)}</del>"
-                rows.append((l_inner, "&nbsp;", "deleted"))
+                rows.append((l_inner, "&nbsp;", "deleted", k, None))
         elif tag == "insert":
             for k in range(j1, j2):
                 r = right_lines[k]
                 r_inner = f"<ins style='background:#e6ffec;color:#216e39;text-decoration:none;'>{escape_html(r)}</ins>"
-                rows.append(("&nbsp;", r_inner, "inserted"))
+                rows.append(("&nbsp;", r_inner, "inserted", None, k))
 
     left_rows = []
     right_rows = []
-    for l_html, r_html, kind in rows:
-        l_cell = f"<div class='aligned-cell-inner'>{l_html}</div>"
-        r_cell = f"<div class='aligned-cell-inner'>{r_html}</div>"
+    for l_html, r_html, kind, li, ri in rows:
+        l_wrapped = _wrap_line(l_html, left_wrappers, li)
+        r_wrapped = _wrap_line(r_html, right_wrappers, ri)
+        l_cell = f"<div class='aligned-cell-inner'>{l_wrapped}</div>"
+        r_cell = f"<div class='aligned-cell-inner'>{r_wrapped}</div>"
         left_rows.append("<tr>" f"<td class='aligned-col left-col {kind}'>{l_cell}</td>" "</tr>")
         right_rows.append("<tr>" f"<td class='aligned-col right-col {kind}'>{r_cell}</td>" "</tr>")
 
