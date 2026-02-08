@@ -1,8 +1,50 @@
 import json
 import os
+import time
+from contextlib import contextmanager
 from typing import Dict, Any, List, Optional
 
 from app.models import Ruleset
+
+
+def _lock_path(target_path: str) -> str:
+    return target_path + ".lock"
+
+
+@contextmanager
+def _exclusive_lock(target_path: str, timeout_s: float = 10.0, stale_s: float = 60.0):
+    lock_path = _lock_path(target_path)
+    start = time.monotonic()
+    acquired = False
+    fd = None
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            acquired = True
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - os.path.getmtime(lock_path)
+                if age > stale_s:
+                    os.remove(lock_path)
+                    continue
+            except Exception:
+                pass
+            if time.monotonic() - start >= timeout_s:
+                raise RuntimeError(f"timeout acquiring lock: {lock_path}")
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        try:
+            if fd is not None:
+                os.close(fd)
+        finally:
+            if acquired:
+                try:
+                    os.remove(lock_path)
+                except Exception:
+                    pass
 
 
 def _store_dir() -> Optional[str]:
@@ -191,20 +233,23 @@ def ensure_rulesets_file() -> None:
     path = _rulesets_file_path()
     if os.path.exists(path):
         return
-    legacy = _legacy_rulesets_file_path()
-    if legacy != path and os.path.exists(legacy):
-        with open(legacy, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+    with _exclusive_lock(path):
+        if os.path.exists(path):
+            return
+        legacy = _legacy_rulesets_file_path()
+        if legacy != path and os.path.exists(legacy):
+            with open(legacy, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
+            return
+        payload = _default_rulesets_payload()
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         os.replace(tmp, path)
-        return
-    payload = _default_rulesets_payload()
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
 
 
 def list_rulesets() -> List[Ruleset]:
@@ -226,35 +271,37 @@ def get_ruleset(template_id: str) -> Optional[Ruleset]:
 def upsert_ruleset(ruleset: Ruleset) -> None:
     ensure_rulesets_file()
     path = _rulesets_file_path()
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-    items = payload.get("rulesets", [])
-    replaced = False
-    for i, x in enumerate(items):
-        if x.get("templateId") == ruleset.templateId:
-            items[i] = ruleset.model_dump()
-            replaced = True
-            break
-    if not replaced:
-        items.append(ruleset.model_dump())
-    payload["rulesets"] = items
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    with _exclusive_lock(path):
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        items = payload.get("rulesets", [])
+        replaced = False
+        for i, x in enumerate(items):
+            if x.get("templateId") == ruleset.templateId:
+                items[i] = ruleset.model_dump()
+                replaced = True
+                break
+        if not replaced:
+            items.append(ruleset.model_dump())
+        payload["rulesets"] = items
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
 
 
 def delete_ruleset(template_id: str) -> None:
     ensure_rulesets_file()
     path = _rulesets_file_path()
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-    items = payload.get("rulesets", [])
-    next_items = [x for x in items if x.get("templateId") != template_id]
-    if len(next_items) == len(items):
-        return
-    payload["rulesets"] = next_items
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    with _exclusive_lock(path):
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        items = payload.get("rulesets", [])
+        next_items = [x for x in items if x.get("templateId") != template_id]
+        if len(next_items) == len(items):
+            return
+        payload["rulesets"] = next_items
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)

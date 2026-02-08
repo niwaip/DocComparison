@@ -10,6 +10,8 @@
 
 data/
 artifacts/
+**/data/
+**/artifacts/
 
 node_modules/
 **/node_modules/
@@ -32,6 +34,15 @@ Thumbs.db
 *.tmp
 *.o
 *.obj
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
 
 # Do not ignore doc/docx files as requested
 !*.doc
