@@ -70,7 +70,11 @@ def get_leading_section_label(text: str) -> str | None:
     if m_cn:
         return m_cn.group(1)
 
-    m_cn_list = re.match(r'^[\(（]?([一二三四五六七八九十百千]+)[\)）]?(?=(?:\s|[.。:：、\-—]))', first_line)
+    m_cn_list_paren = re.match(r'^[\(（]([一二三四五六七八九十百千]+)[\)）]', first_line)
+    if m_cn_list_paren:
+        return m_cn_list_paren.group(1)
+
+    m_cn_list = re.match(r'^([一二三四五六七八九十百千]+)(?=(?:\s|[.。:：、\-—]))', first_line)
     if m_cn_list:
         return m_cn_list.group(1)
         

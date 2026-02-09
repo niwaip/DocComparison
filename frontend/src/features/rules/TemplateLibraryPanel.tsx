@@ -79,12 +79,15 @@ export default function TemplateLibraryPanel(props: Props) {
                         const isEditing = editingTemplateId === tpl.templateId
                         if (isEditing) {
                           setEditingTemplateId(null)
+                          setNewTemplateId('')
+                          if (lastAutoNameRef.current) setNewTemplateName(lastAutoNameRef.current)
                           return
                         }
                         setEditingTemplateId(tpl.templateId)
                         setTemplateId(tpl.templateId)
-                        setNewTemplateId('')
+                        setNewTemplateId(tpl.templateId)
                         setNewTemplateName(tpl.name || tpl.templateId)
+                        setSnapshotFileName('')
                         try {
                           await loadTemplateSnapshot(tpl.templateId)
                         } catch (e) {
@@ -155,6 +158,7 @@ export default function TemplateLibraryPanel(props: Props) {
             <input
               value={newTemplateId}
               onChange={(e) => setNewTemplateId(e.target.value)}
+              disabled={!!editingTemplateId}
               style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }}
             />
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.name')}</div>
@@ -170,11 +174,12 @@ export default function TemplateLibraryPanel(props: Props) {
                 const f = e.target.files?.[0]
                 if (!f) return
                 setSnapshotFileName(f.name)
-                setEditingTemplateId(null)
-                const nextAuto = baseNameFromFileName(f.name)
-                if (nextAuto) {
-                  lastAutoNameRef.current = nextAuto
-                  setNewTemplateName(nextAuto)
+                if (!editingTemplateId) {
+                  const nextAuto = baseNameFromFileName(f.name)
+                  if (nextAuto) {
+                    lastAutoNameRef.current = nextAuto
+                    setNewTemplateName(nextAuto)
+                  }
                 }
                 generateTemplateSnapshot(f)
                 window.setTimeout(() => {

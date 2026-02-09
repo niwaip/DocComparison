@@ -1,14 +1,11 @@
 ARG PYTHON_IMAGE=python:3.11-slim
 FROM ${PYTHON_IMAGE}
 
-# Use Tsinghua Pip Mirror
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+# Use Aliyun Pip Mirror
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple
 
-# Use Tsinghua Apt Mirror (Debian Bookworm)
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
-
-# Install Pandoc
-RUN apt-get update && apt-get install -y pandoc && rm -rf /var/lib/apt/lists/*
+# Use Aliyun Apt Mirror (Debian Bookworm)
+RUN sed -i -e 's|deb.debian.org|mirrors.aliyun.com|g' -e 's|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
 
 WORKDIR /app
 

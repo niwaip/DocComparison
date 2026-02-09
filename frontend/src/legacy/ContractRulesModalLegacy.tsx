@@ -306,11 +306,12 @@ export default function ContractRulesModalLegacy(props: Props) {
                             const isEditing = editingTemplateId === tpl.templateId
                             if (isEditing) {
                               setEditingTemplateId(null)
+                              setNewTemplateId('')
                               return
                             }
                             setEditingTemplateId(tpl.templateId)
                             setTemplateId(tpl.templateId)
-                            setNewTemplateId('')
+                            setNewTemplateId(tpl.templateId)
                             setNewTemplateName(tpl.name || tpl.templateId)
                             try {
                               await loadTemplateSnapshot(tpl.templateId)
@@ -382,6 +383,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                   <input
                     value={newTemplateId}
                     onChange={(e) => setNewTemplateId(e.target.value)}
+                    disabled={!!editingTemplateId}
                     style={{ height: 36, borderRadius: 10, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: '0 10px' }}
                   />
                   <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t('rules.templateLibrary.name')}</div>
@@ -397,7 +399,6 @@ export default function ContractRulesModalLegacy(props: Props) {
                       const f = e.target.files?.[0]
                       if (!f) return
                       setSnapshotFileName(f.name)
-                      setEditingTemplateId(null)
                       generateTemplateSnapshot(f)
                       window.setTimeout(() => {
                         const el = document.getElementById('block-config-panel')

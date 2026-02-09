@@ -189,7 +189,7 @@ def _find_block(blocks: List[Block], anchor_type: str, anchor_value: str) -> Opt
                 s = (sp or "").strip()
                 if not s:
                     return ""
-                return re.sub(r"\bol\[\d+\]\b", "ol[]", s)
+                return re.sub(r"ol\[\d+\]", "ol[*]", s)
 
             cav = _canon_list_path(av)
             if cav:
