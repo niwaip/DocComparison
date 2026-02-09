@@ -56,7 +56,7 @@ export default function SideActions(props: Props) {
             <select className="select" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
               {contractTypeOptions.map((o) => (
                 <option key={o.templateId} value={o.templateId}>
-                  {o.name}
+                  {o.templateId ? o.name : '\u00A0'}
                 </option>
               ))}
             </select>

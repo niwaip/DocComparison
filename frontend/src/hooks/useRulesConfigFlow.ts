@@ -258,8 +258,15 @@ export const useRulesConfigFlow = (p: Params) => {
 
   React.useEffect(() => {
     if (!configOpen) return
+    if (!templateId) {
+      setTemplateDraftFile(null)
+      setTemplateBlocks([])
+      setFieldRules({})
+      setBlockPrompts({})
+      return
+    }
     void loadTemplateSnapshot(templateId)
-  }, [configOpen, loadTemplateSnapshot, templateId])
+  }, [configOpen, loadTemplateSnapshot, setBlockPrompts, setFieldRules, setTemplateBlocks, setTemplateDraftFile, templateId])
 
   const generateTemplateSnapshot = React.useCallback(
     async (file: File) => {
@@ -510,7 +517,7 @@ export const useRulesConfigFlow = (p: Params) => {
         throw new Error(t('error.template.delete', { message: errText(e) }))
       }
       await reloadTemplateIndex()
-      if (templateId === id) setTemplateId('sales_contract_cn')
+      if (templateId === id) setTemplateId('')
     },
     [errText, reloadTemplateIndex, setTemplateId, t, templateId]
   )

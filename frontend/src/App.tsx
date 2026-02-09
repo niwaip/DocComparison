@@ -117,7 +117,7 @@ const appInitialState = (): AppState => {
   activeDiffIndex: 0,
   activeRowId: null,
   configOpen: false,
-  templateId: 'sales_contract_cn',
+  templateId: '',
   aiCheckEnabled: false,
   aiAnalyzeEnabled: false,
   uploadPaneCollapsed: false,
@@ -331,13 +331,27 @@ function App() {
   }, [templateIndex])
 
   const contractTypeOptions = useMemo(() => {
-    const blank = { templateId: '', name: t('side.contractType.unmatched') }
     const base = templateIndex.map((t) => ({ templateId: t.templateId, name: t.name || t.templateId }))
-    if (!templateId) return [blank, ...base]
+    return [{ templateId: '', name: '' }, ...base]
+  }, [templateIndex])
+
+  useEffect(() => {
+    if (templateIndexLoading) return
+    if (templateIndex.length > 0) return
+    setTemplateIndexLoading(true)
+    api.templates
+      .list()
+      .then((list) => setTemplateIndex(list))
+      .catch((err) => setError(t('error.templateIndex.load', { message: errText(err) })))
+      .finally(() => setTemplateIndexLoading(false))
+  }, [errText, setError, setTemplateIndex, setTemplateIndexLoading, t, templateIndex.length, templateIndexLoading])
+
+  useEffect(() => {
+    if (!templateId) return
+    if (templateIndex.length === 0) return
     const exists = templateIndex.some((t) => t.templateId === templateId)
-    if (exists) return [blank, ...base]
-    return [blank, { templateId, name: templateNameById.get(templateId) || templateId }, ...base]
-  }, [templateIndex, templateId, templateNameById, t])
+    if (!exists) setTemplateId('')
+  }, [setTemplateId, templateId, templateIndex])
 
   useEffect(() => {
     if (templateId) return
