@@ -8,9 +8,9 @@ services:
     build:
       context: ./backend
       args:
-        PYTHON_IMAGE: python:3.11-slim
-    ports:
-      - "8000:8000"
+        PYTHON_IMAGE: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.11-slim
+    expose:
+      - "8000"
     environment:
       # REDIS_URL: redis://redis:6379
       LLM_PROVIDER: ${LLM_PROVIDER:-}
@@ -33,6 +33,14 @@ services:
       - ./backend/data:/app/data
     # depends_on:
     #   - redis
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
 
 volumes:
   artifacts:

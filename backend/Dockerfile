@@ -1,4 +1,4 @@
-ARG PYTHON_IMAGE=python:3.11-slim
+ARG PYTHON_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.11-slim
 FROM ${PYTHON_IMAGE}
 
 # Use Aliyun Pip Mirror
