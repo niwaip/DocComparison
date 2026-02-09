@@ -1,5 +1,5 @@
 import React from 'react'
-import type { Block, DetectedField, FieldRuleState, TemplateListItem } from '../../domain/types'
+import type { Block, DetectedField, FieldRuleState, SaveRulesetResult, TemplateListItem } from '../../domain/types'
 import BlockRulesPanel from './BlockRulesPanel'
 import GlobalPromptPanel from './GlobalPromptPanel'
 import TemplateLibraryPanel from './TemplateLibraryPanel'
@@ -12,7 +12,7 @@ export type ContractRulesModalProps = {
 
   templateId: string
   setTemplateId: (v: string) => void
-  saveRuleset: () => void
+  saveRuleset: () => Promise<SaveRulesetResult>
   rulesetLoading: boolean
 
   templateIndex: TemplateListItem[]
@@ -79,6 +79,24 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
     loadGlobalPrompt,
     saveGlobalPrompt
   } = props
+  const [saveToast, setSaveToast] = React.useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const saveToastTimerRef = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    return () => {
+      if (saveToastTimerRef.current) window.clearTimeout(saveToastTimerRef.current)
+      saveToastTimerRef.current = null
+    }
+  }, [])
+
+  const triggerSaveRuleset = React.useCallback(() => {
+    void (async () => {
+      const res = await saveRuleset()
+      setSaveToast({ kind: res.ok ? 'success' : 'error', text: res.message || (res.ok ? t('rules.save.success.ruleset') : t('rules.save.failed')) })
+      if (saveToastTimerRef.current) window.clearTimeout(saveToastTimerRef.current)
+      saveToastTimerRef.current = window.setTimeout(() => setSaveToast(null), 4200)
+    })()
+  }, [saveRuleset, t])
 
   if (!open) return null
 
@@ -96,6 +114,29 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
             ✕
           </button>
         </div>
+
+        {saveToast && (
+          <div style={{ padding: '10px 14px 0 14px' }}>
+            <div
+              style={{
+                border: '1px solid var(--control-border)',
+                borderRadius: 12,
+                padding: '10px 12px',
+                background: saveToast.kind === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                color: 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 650 }}>{saveToast.text}</div>
+              <button className="btn-secondary" onClick={() => setSaveToast(null)} style={{ height: 28, padding: '0 10px' }}>
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ padding: 14, display: 'grid', gap: 14 }}>
           <TemplateLibraryPanel
@@ -122,7 +163,7 @@ export default function ContractRulesModalV2(props: ContractRulesModalProps) {
             updateFieldRule={updateFieldRule}
             blockPrompts={blockPrompts}
             setBlockPrompts={setBlockPrompts}
-            saveRuleset={saveRuleset}
+            saveRuleset={triggerSaveRuleset}
             rulesetLoading={rulesetLoading}
           />
 

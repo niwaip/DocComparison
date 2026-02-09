@@ -8,6 +8,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.models import Block, TemplateSnapshot, TemplateListItem, TemplateMatchItem, TemplateMatchResponse
+from app.core.config import settings
 from app.services.ruleset_store import delete_ruleset, get_ruleset, upsert_ruleset
 from app.utils.text_utils import get_leading_section_label, normalize_text, strip_section_noise
 
@@ -54,6 +55,24 @@ def _exclusive_lock(target_path: str, timeout_s: float = 10.0, stale_s: float = 
 
 def _sha1(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+def _validate_template_id(template_id: str) -> str:
+    tid = (template_id or "").strip()
+    if not tid:
+        raise ValueError("templateId required")
+    if not re.fullmatch(r"[a-zA-Z0-9._-]{1,80}", tid):
+        raise ValueError("templateId invalid")
+    return tid
+
+
+def _validate_version(version: str) -> str:
+    v = (version or "").strip()
+    if not v:
+        raise ValueError("version required")
+    if not re.fullmatch(r"[a-zA-Z0-9._-]{1,80}", v):
+        raise ValueError("version invalid")
+    return v
 
 
 def _store_dir() -> Optional[str]:
@@ -246,6 +265,9 @@ def get_template(template_id: str, version: str) -> Optional[TemplateSnapshot]:
 
 
 def upsert_template(snapshot: TemplateSnapshot) -> None:
+    snapshot.templateId = _validate_template_id(snapshot.templateId)
+    snapshot.version = _validate_version(snapshot.version)
+    snapshot.name = (snapshot.name or "").strip() or snapshot.templateId
     ensure_templates_file()
     path = _templates_file_path()
     with _exclusive_lock(path):
@@ -347,10 +369,13 @@ def match_templates(blocks: List[Block], top_n: int = 5) -> TemplateMatchRespons
         outline_candidates.sort(key=lambda x: x.score, reverse=True)
         best = outline_candidates[0] if outline_candidates else None
         second = outline_candidates[1] if len(outline_candidates) > 1 else None
-        if best and best.score >= 0.72 and (second is None or (best.score - second.score) >= 0.06):
+        if best and best.score >= settings.TEMPLATE_MATCH_OUTLINE_MIN_SCORE and (
+            second is None or (best.score - second.score) >= settings.TEMPLATE_MATCH_OUTLINE_MIN_GAP
+        ):
             boosted: List[TemplateMatchItem] = []
             for c in outline_candidates:
-                s = min(1.0, 0.9 + 0.1 * float(c.score))
+                base = settings.TEMPLATE_MATCH_OUTLINE_BOOST_BASE
+                s = min(1.0, base + (1.0 - base) * float(c.score))
                 boosted.append(
                     TemplateMatchItem(
                         templateId=c.templateId,

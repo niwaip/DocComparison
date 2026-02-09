@@ -1,7 +1,7 @@
 import React from 'react'
 import { api } from '../api'
-import { detectFieldsFromBlock } from '../domain/fieldDetection'
-import { escapeRegex, hashString } from '../domain/textUtils'
+import { defaultFieldRuleState, detectFieldsFromBlock } from '../domain/fieldDetection'
+import { escapeRegex, hashString, normalizeStructurePathForListNumId, remapPromptKeysToCandidates } from '../domain/textUtils'
 import type { Lang } from '../i18n'
 import type {
   Block,
@@ -11,8 +11,11 @@ import type {
   Ruleset,
   RulesetAnchor,
   RulesetPoint,
+  SaveRulesetResult,
   TemplateListItem
 } from '../domain/types'
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 
 type Params = {
   lang: Lang
@@ -131,7 +134,6 @@ export const useRulesConfigFlow = (p: Params) => {
         setTemplateBlocks(blocks)
 
         const detected = blocks.flatMap((b) => detectFieldsFromBlock(b))
-        const spSet = new Set(blocks.map((b) => b.structurePath).filter(Boolean))
 
         let ruleset: Ruleset | null = null
         try {
@@ -150,11 +152,14 @@ export const useRulesConfigFlow = (p: Params) => {
         const fieldIdBySpLabel = new Map<string, string>()
         const fieldIdsByLabel = new Map<string, string[]>()
         const tableIdBySp = new Map<string, string>()
+        const tableIdBySpNorm = new Map<string, string>()
 
         for (const f of detected) {
-          nextFieldRules[f.fieldId] = { requiredAfterColon: false, dateMonth: false, dateFormat: false, tableSalesItems: false, aiPrompt: '' }
+          nextFieldRules[f.fieldId] = defaultFieldRuleState(f)
           if (f.kind === 'table') {
             tableIdBySp.set(f.structurePath, f.fieldId)
+            const norm = normalizeStructurePathForListNumId(f.structurePath)
+            if (norm && !tableIdBySpNorm.has(norm)) tableIdBySpNorm.set(norm, f.fieldId)
             continue
           }
           const key = `${f.structurePath}||${f.labelRegex}`
@@ -164,7 +169,19 @@ export const useRulesConfigFlow = (p: Params) => {
           fieldIdsByLabel.set(f.labelRegex, arr)
         }
 
-        const nextBlockPrompts: Record<string, string> = {}
+        let nextBlockPrompts: Record<string, string> = {}
+        const refPromptsRaw =
+          (isRecord(ruleset.referenceData) ? (ruleset.referenceData.blockAiPrompts ?? ruleset.referenceData.blockPrompts) : null) ?? null
+        if (isRecord(refPromptsRaw)) {
+          const out: Record<string, string> = {}
+          for (const [k, v] of Object.entries(refPromptsRaw)) {
+            if (typeof v !== 'string') continue
+            const p = v.trim()
+            if (!p) continue
+            out[String(k)] = v
+          }
+          nextBlockPrompts = out
+        }
         const points = ruleset.points
         for (const pt of points) {
           const anchorType = pt.anchor.type
@@ -176,7 +193,7 @@ export const useRulesConfigFlow = (p: Params) => {
             const rt = r.type
             if (rt === 'tableSalesItems') {
               if (anchorType === 'structurePath' && anchorValue) {
-                const fid = tableIdBySp.get(anchorValue)
+                const fid = tableIdBySp.get(anchorValue) || tableIdBySpNorm.get(normalizeStructurePathForListNumId(anchorValue))
                 if (fid && nextFieldRules[fid]) {
                   nextFieldRules[fid].tableSalesItems = true
                   if (prompt && typeof prompt === 'string') nextFieldRules[fid].aiPrompt = prompt
@@ -203,13 +220,32 @@ export const useRulesConfigFlow = (p: Params) => {
             else if (rt === 'dateFormat') nextFieldRules[fid].dateFormat = true
           }
 
-          if (prompt && rules.length === 0 && anchorType === 'structurePath' && anchorValue && spSet.has(anchorValue)) {
-            nextBlockPrompts[anchorValue] = prompt
+          if (prompt && rules.length === 0 && anchorType === 'structurePath' && anchorValue) {
+            if (!nextBlockPrompts[anchorValue]) nextBlockPrompts[anchorValue] = prompt
           }
         }
 
         setFieldRules(nextFieldRules)
-        setBlockPrompts(nextBlockPrompts)
+        const firstLevelKey = (structurePath: string) => {
+          const sp = (structurePath || '').trim()
+          if (!sp) return ''
+          const parts = sp.split('.').map((x) => x.trim()).filter(Boolean)
+          const liIdx = parts.findIndex((p) => /^li\[\d+\]$/.test(p))
+          if (liIdx >= 0) return parts.slice(0, liIdx + 1).join('.')
+          return parts.join('.')
+        }
+        const promptCandidates = Array.from(
+          new Set([...detected.map((f) => f.structurePath).filter(Boolean), ...blocks.map((b) => b.structurePath).filter(Boolean), ...blocks.map((b) => firstLevelKey(b.structurePath)).filter(Boolean)])
+        )
+        const remapped = remapPromptKeysToCandidates(nextBlockPrompts, promptCandidates)
+        const collapsed: Record<string, string> = {}
+        for (const [k, v] of Object.entries(remapped)) {
+          const kk = firstLevelKey(k)
+          if (!kk) continue
+          const prev = collapsed[kk]
+          if (!prev || v.trim().length > prev.trim().length) collapsed[kk] = v
+        }
+        setBlockPrompts(collapsed)
       } catch (err) {
         reportError(err)
         setTemplateBlocks([])
@@ -247,7 +283,7 @@ export const useRulesConfigFlow = (p: Params) => {
     [errText, reportError, setBlockPrompts, setError, setFieldRules, setLoading, setTemplateBlocks, setTemplateDraftFile, t]
   )
 
-  const saveRuleset = React.useCallback(async () => {
+  const saveRuleset = React.useCallback(async (): Promise<SaveRulesetResult> => {
     setRulesetLoading(true)
     setError('')
     try {
@@ -257,6 +293,7 @@ export const useRulesConfigFlow = (p: Params) => {
       let targetTemplateId = templateId
       let nameOverride: string | null = null
       let versionOverride: string | null = null
+      let templateSaved = false
 
       if (templateDraftFile) {
         if (!draftTemplateId) throw new Error(t('error.templateId.required'))
@@ -277,6 +314,7 @@ export const useRulesConfigFlow = (p: Params) => {
         targetTemplateId = draftTemplateId
         nameOverride = draftName || draftTemplateId
         versionOverride = today
+        templateSaved = true
       }
 
       let existing: Ruleset | null = null
@@ -311,7 +349,7 @@ export const useRulesConfigFlow = (p: Params) => {
       const generated: RulesetPoint[] = []
       const fieldById = new Map(detectedFields.map((f) => [f.fieldId, f]))
       for (const [fieldId, f] of fieldById.entries()) {
-        const st = fieldRules[fieldId] || { requiredAfterColon: false, dateMonth: false, dateFormat: false, tableSalesItems: false, aiPrompt: '' }
+        const st = fieldRules[fieldId] || defaultFieldRuleState(f)
         const rules: Array<{ type: string; params?: Record<string, unknown> }> = []
         if (f.kind === 'field') {
           if (st.requiredAfterColon) rules.push({ type: 'requiredAfterColon', params: { labelRegex: f.labelRegex } })
@@ -350,30 +388,70 @@ export const useRulesConfigFlow = (p: Params) => {
         })
       }
 
+      const cleanedBlockPrompts: Record<string, string> = {}
+      for (const [k, v] of Object.entries(blockPrompts || {})) {
+        if (typeof v !== 'string') continue
+        const p = v.trim()
+        if (!p) continue
+        cleanedBlockPrompts[k] = v
+      }
+
       const spSet = new Set(templateBlocks.map((b) => b.structurePath).filter(Boolean))
+      const allSps = templateBlocks.map((b) => b.structurePath).filter(Boolean)
+      const expandStructurePaths = (key: string): string[] => {
+        const k = (key || '').trim()
+        if (!k) return []
+        if (spSet.has(k)) return [k]
+        const out: string[] = []
+        const seen = new Set<string>()
+        const prefixes = [k + '.', k + '/', k + ' > ']
+        for (const sp2 of allSps) {
+          if (!sp2) continue
+          let ok = false
+          for (const pref of prefixes) {
+            if (sp2.startsWith(pref)) {
+              ok = true
+              break
+            }
+          }
+          if (!ok) continue
+          if (seen.has(sp2)) continue
+          seen.add(sp2)
+          out.push(sp2)
+        }
+        return out
+      }
       for (const [sp, rawPrompt] of Object.entries(blockPrompts || {})) {
         const prompt = (rawPrompt || '').trim()
         if (!prompt) continue
-        if (!spSet.has(sp)) continue
-        const title = ((prompt.split('\n')[0] || '').trim() || t('ruleset.title.blockAiCheck')).slice(0, 60)
-        const pointId = `blockai.${hashString(sp)}`
-        generated.push({
-          pointId,
-          title,
-          severity: 'medium',
-          anchor: { type: 'structurePath', value: sp },
-          rules: [],
-          ai: { policy: 'optional', prompt }
-        })
+        const resolved = expandStructurePaths(sp)
+        if (resolved.length === 0) continue
+        const baseTitle = ((prompt.split('\n')[0] || '').trim() || t('ruleset.title.blockAiCheck')).trim()
+        for (const leafSp of resolved) {
+          const suffix = resolved.length > 1 ? (lang === 'zh-CN' ? `（${leafSp}）` : ` (${leafSp})`) : ''
+          const title = `${baseTitle}${suffix}`.slice(0, 60)
+          const pointId = `blockai.${hashString(`${sp}||${leafSp}`)}`
+          generated.push({
+            pointId,
+            title,
+            severity: 'medium',
+            anchor: { type: 'structurePath', value: leafSp },
+            rules: [],
+            ai: { policy: 'optional', prompt }
+          })
+        }
       }
 
       const name = (existing?.name || nameOverride || templateNameById.get(targetTemplateId) || targetTemplateId || t('ruleset.unnamed')).trim()
       const version = (existing?.version || versionOverride || today).trim()
+      const referenceData = { ...(existing?.referenceData || {}) }
+      if (Object.keys(cleanedBlockPrompts).length > 0) referenceData.blockAiPrompts = cleanedBlockPrompts
+      else if ('blockAiPrompts' in referenceData) delete referenceData.blockAiPrompts
       const payload: Ruleset = {
         templateId: targetTemplateId,
         name,
         version,
-        referenceData: existing?.referenceData || {},
+        referenceData,
         points: [...kept, ...generated]
       }
 
@@ -382,8 +460,11 @@ export const useRulesConfigFlow = (p: Params) => {
       } catch (e) {
         throw new Error(t('error.ruleset.save', { message: errText(e) }))
       }
+      if (templateSaved) return { ok: true, message: t('rules.save.success.templateAndRuleset', { templateId: targetTemplateId, version }) }
+      return { ok: true, message: t('rules.save.success.ruleset') }
     } catch (err) {
       reportError(err)
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
     } finally {
       setRulesetLoading(false)
     }

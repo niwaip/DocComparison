@@ -1,5 +1,6 @@
 import React from 'react'
 import type { Block, DetectedField, FieldRuleState } from '../../domain/types'
+import { defaultFieldRuleState } from '../../domain/fieldDetection'
 import { applyIndentDataAttrs, escapeRegex } from '../../domain/textUtils'
 import { useI18n } from '../../i18n'
 
@@ -275,6 +276,7 @@ export default function BlockRulesPanel(props: Props) {
             const checkboxStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text)' }
             const groupId = g.groupKey
             const sp = g.anchorSp
+            const promptKey = firstLevelKey(sp)
             const excerpt = g.block ? (g.block.text || '') : ''
             const blockTitle = getBlockTitle(g.block, t('rules.blockRules.blockFallbackTitle'))
             return (
@@ -337,14 +339,7 @@ export default function BlockRulesPanel(props: Props) {
                     <div style={{ fontWeight: 750, marginBottom: 6 }}>{t('rules.blockRules.fixedRules')}</div>
                     <div style={{ display: 'grid', gap: 10 }}>
                       {g.fields.map((f) => {
-                        const st =
-                          fieldRules[f.fieldId] || {
-                            requiredAfterColon: f.kind === 'field',
-                            dateMonth: f.kind === 'field' && f.label.includes('日期'),
-                            dateFormat: f.kind === 'field' && f.label.includes('日期'),
-                            tableSalesItems: f.kind === 'table',
-                            aiPrompt: ''
-                          }
+                        const st = fieldRules[f.fieldId] || defaultFieldRuleState(f)
                         const title = f.kind === 'table' ? t('rules.blockRules.table') : f.label
                         const excerptLine = f.kind === 'field' ? findLabelExcerpt(g.block, f.label) : ''
                         return (
@@ -417,13 +412,13 @@ export default function BlockRulesPanel(props: Props) {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 750, marginBottom: 6 }}>{t('rules.blockRules.aiPromptOptional')}</div>
                     {(() => {
-                      const v = blockPrompts[sp] || ''
+                      const v = blockPrompts[promptKey] || ''
                       return (
                         <div style={{ border: '1px solid var(--control-border)', borderRadius: 12, padding: 10, background: 'var(--control-bg)' }}>
                           <div style={{ fontWeight: 750, fontSize: 13 }}>{t('rules.blockRules.blockUnifiedPrompt')}</div>
                           <textarea
                             value={v}
-                            onChange={(e) => setBlockPrompts((prev) => ({ ...prev, [sp]: e.target.value }))}
+                            onChange={(e) => setBlockPrompts((prev) => ({ ...prev, [promptKey]: e.target.value }))}
                             placeholder={t('rules.blockRules.blockAiPlaceholder')}
                             style={{
                               width: '100%',

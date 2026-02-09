@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyIndentDataAttrs, escapeRegex, hashString } from '../../src/domain/textUtils'
+import { applyIndentDataAttrs, escapeRegex, hashString, normalizeStructurePathForListNumId, remapPromptKeysToCandidates } from '../../src/domain/textUtils'
 
 describe('textUtils', () => {
   it('hashString is deterministic and hex padded', () => {
@@ -14,6 +14,18 @@ describe('textUtils', () => {
     const escaped = escapeRegex(raw)
     expect(escaped).toBe('a\\.b\\*c\\?d\\^e\\$f\\{g\\}h\\(i\\)j\\|k\\[l\\]m\\\\n')
     expect(new RegExp(escaped).test(raw)).toBe(true)
+  })
+
+  it('normalizeStructurePathForListNumId masks ol[numId]', () => {
+    expect(normalizeStructurePathForListNumId('body.ol[12].li[3].p[1]')).toBe('body.ol[*].li[3].p[1]')
+    expect(normalizeStructurePathForListNumId('body.p[1]')).toBe('body.p[1]')
+  })
+
+  it('remapPromptKeysToCandidates remaps by normalized list path', () => {
+    const prompts = { 'body.ol[12].li[3]': 'P1' }
+    const candidates = ['body.ol[7].li[3]', 'body.p[1]']
+    const out = remapPromptKeysToCandidates(prompts, candidates)
+    expect(out['body.ol[7].li[3]']).toBe('P1')
   })
 
   it('applyIndentDataAttrs converts data attrs and adds default 2ch indent', () => {

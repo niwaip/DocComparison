@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 
+from app.core.config import settings
 from app.models import Block, AlignmentRow
 from app.services.doc_service import DocService
 from app.services.diff_service import align_blocks
@@ -15,14 +16,7 @@ llm_service = LLMService()
 
 
 def _max_upload_bytes() -> int:
-    raw = os.getenv("DOC_COMPARISON_MAX_UPLOAD_MB", "").strip()
-    try:
-        mb = int(raw) if raw else 20
-    except Exception:
-        mb = 20
-    if mb < 1:
-        mb = 1
-    return mb * 1024 * 1024
+    return settings.max_upload_bytes()
 
 
 def _is_probably_docx(path: str) -> bool:

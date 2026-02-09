@@ -7,7 +7,8 @@ from app.services.prompt_store import get_global_prompt_config, upsert_global_pr
 from app.services.ruleset_store import get_ruleset, upsert_ruleset
 from app.services.template_store import get_latest_template, match_templates, upsert_template
 from app.models import CheckRule, RuleType, CheckStatus
-from app.services.check_service import _eval_required_after_colon, _has_underline_placeholder, _refine_block_for_label_rules
+from app.services.check_service import _eval_required_after_colon, _find_block, _has_underline_placeholder, _refine_block_for_label_rules
+from app.utils.text_utils import get_leading_section_label
 
 
 def _make_block(block_id: str, text: str) -> Block:
@@ -175,3 +176,21 @@ class StoreRoundtripTests(unittest.TestCase):
         )
         st, _ = _eval_required_after_colon(CheckRule(type=RuleType.REQUIRED_AFTER_COLON, params={"labelRegex": "最终用户"}), block)
         self.assertEqual(st, CheckStatus.PASS)
+
+    def test_leading_section_label_detects_cn_list_style(self):
+        self.assertEqual(get_leading_section_label("一、 产品名称、规格、数量、价格"), "一")
+        self.assertEqual(get_leading_section_label("（二）交货方式及日期："), "二")
+
+    def test_find_block_structure_path_ignores_list_num_id(self):
+        b = Block(
+            blockId="b1",
+            kind=BlockKind.LIST_ITEM,
+            structurePath="body.ol[12].li[0]",
+            stableKey="k1",
+            text="一、 产品名称、规格、数量、价格",
+            htmlFragment="",
+            meta=BlockMeta(),
+        )
+        got = _find_block([b], "structurePath", "body.ol[0].li[0]")
+        self.assertIsNotNone(got)
+        self.assertEqual(got.blockId, "b1")

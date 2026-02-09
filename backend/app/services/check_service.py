@@ -183,6 +183,19 @@ def _find_block(blocks: List[Block], anchor_type: str, anchor_value: str) -> Opt
         for b in blocks:
             if b.structurePath == anchor_value:
                 return b
+        av = (anchor_value or "").strip()
+        if "ol[" in av and "li[" in av:
+            def _canon_list_path(sp: str) -> str:
+                s = (sp or "").strip()
+                if not s:
+                    return ""
+                return re.sub(r"\bol\[\d+\]\b", "ol[]", s)
+
+            cav = _canon_list_path(av)
+            if cav:
+                for b in blocks:
+                    if _canon_list_path(b.structurePath or "") == cav:
+                        return b
         return None
     if anchor_type == "textRegex":
         try:

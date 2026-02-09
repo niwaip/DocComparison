@@ -393,7 +393,7 @@ function App() {
   const updateFieldRule = (fieldId: string, patch: Partial<FieldRuleState>) => {
     setFieldRules((prev) => ({
       ...prev,
-      [fieldId]: { ...(prev[fieldId] || { requiredAfterColon: false, dateMonth: false, dateFormat: false, tableSalesItems: false }), ...patch }
+      [fieldId]: { ...(prev[fieldId] || { requiredAfterColon: false, dateMonth: false, dateFormat: false, tableSalesItems: false, aiPrompt: '' }), ...patch }
     }))
   }
 

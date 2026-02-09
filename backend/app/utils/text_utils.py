@@ -69,6 +69,10 @@ def get_leading_section_label(text: str) -> str | None:
     m_cn = re.match(r'^(第[一二三四五六七八九十百千0-9]+[条章节篇部分])(?=(?:\s|[.。:：、\-—\)])|$)', first_line)
     if m_cn:
         return m_cn.group(1)
+
+    m_cn_list = re.match(r'^[\(（]?([一二三四五六七八九十百千]+)[\)）]?(?=(?:\s|[.。:：、\-—]))', first_line)
+    if m_cn_list:
+        return m_cn_list.group(1)
         
     return None
 

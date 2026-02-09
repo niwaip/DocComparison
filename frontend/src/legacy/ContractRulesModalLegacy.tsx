@@ -1,5 +1,6 @@
 import React from 'react'
-import type { Block, DetectedField, FieldRuleState, TemplateListItem } from '../domain/types'
+import type { Block, DetectedField, FieldRuleState, SaveRulesetResult, TemplateListItem } from '../domain/types'
+import { defaultFieldRuleState } from '../domain/fieldDetection'
 import { applyIndentDataAttrs, escapeRegex } from '../domain/textUtils'
 import { useI18n } from '../i18n'
 
@@ -10,7 +11,7 @@ type Props = {
 
   templateId: string
   setTemplateId: (v: string) => void
-  saveRuleset: () => void
+  saveRuleset: () => Promise<SaveRulesetResult>
   rulesetLoading: boolean
 
   templateIndex: TemplateListItem[]
@@ -82,6 +83,25 @@ export default function ContractRulesModalLegacy(props: Props) {
     loadGlobalPrompt,
     saveGlobalPrompt
   } = props
+
+  const [saveToast, setSaveToast] = React.useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const saveToastTimerRef = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    return () => {
+      if (saveToastTimerRef.current) window.clearTimeout(saveToastTimerRef.current)
+      saveToastTimerRef.current = null
+    }
+  }, [])
+
+  const triggerSaveRuleset = React.useCallback(() => {
+    void (async () => {
+      const res = await saveRuleset()
+      setSaveToast({ kind: res.ok ? 'success' : 'error', text: res.message || (res.ok ? t('rules.save.success.ruleset') : t('rules.save.failed')) })
+      if (saveToastTimerRef.current) window.clearTimeout(saveToastTimerRef.current)
+      saveToastTimerRef.current = window.setTimeout(() => setSaveToast(null), 4200)
+    })()
+  }, [saveRuleset, t])
 
   const renderTableFromText = (text: string) => {
     const lines = (text || '')
@@ -233,6 +253,29 @@ export default function ContractRulesModalLegacy(props: Props) {
             ✕
           </button>
         </div>
+
+        {saveToast && (
+          <div style={{ padding: '10px 14px 0 14px' }}>
+            <div
+              style={{
+                border: '1px solid var(--control-border)',
+                borderRadius: 12,
+                padding: '10px 12px',
+                background: saveToast.kind === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                color: 'var(--text)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 650 }}>{saveToast.text}</div>
+              <button className="btn-secondary" onClick={() => setSaveToast(null)} style={{ height: 28, padding: '0 10px' }}>
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ padding: 14, display: 'grid', gap: 14 }}>
           <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: 14 }}>
@@ -395,7 +438,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                   <span className="switch-ui" aria-hidden="true" />
                   <span className="switch-text">{t('rules.blockRules.expandAll')}</span>
                 </label>
-                <button className="btn-primary btn-primary-save" onClick={saveRuleset} disabled={rulesetLoading || !hasBlocks}>
+                <button className="btn-primary btn-primary-save" onClick={triggerSaveRuleset} disabled={rulesetLoading || !hasBlocks}>
                   {rulesetLoading ? t('rules.blockRules.saving') : t('rules.blockRules.save')}
                 </button>
               </div>
@@ -477,14 +520,7 @@ export default function ContractRulesModalLegacy(props: Props) {
                           <div style={{ fontWeight: 750, marginBottom: 6 }}>{t('rules.blockRules.fixedRules')}</div>
                           <div style={{ display: 'grid', gap: 10 }}>
                             {g.fields.map((f) => {
-                              const st =
-                                fieldRules[f.fieldId] || {
-                                  requiredAfterColon: f.kind === 'field',
-                                  dateMonth: f.kind === 'field' && f.label.includes('日期'),
-                                  dateFormat: f.kind === 'field' && f.label.includes('日期'),
-                                  tableSalesItems: f.kind === 'table',
-                                  aiPrompt: ''
-                                }
+                              const st = fieldRules[f.fieldId] || defaultFieldRuleState(f)
                               const title = f.kind === 'table' ? t('rules.blockRules.table') : f.label
                               const excerptLine = f.kind === 'field' ? findLabelExcerpt(g.block, f.label) : ''
                               return (

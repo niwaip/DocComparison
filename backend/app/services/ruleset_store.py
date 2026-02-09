@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from contextlib import contextmanager
 from typing import Dict, Any, List, Optional
@@ -268,7 +269,28 @@ def get_ruleset(template_id: str) -> Optional[Ruleset]:
     return None
 
 
+def _validate_template_id(template_id: str) -> str:
+    tid = (template_id or "").strip()
+    if not tid:
+        raise ValueError("templateId required")
+    if not re.fullmatch(r"[a-zA-Z0-9._-]{1,80}", tid):
+        raise ValueError("templateId invalid")
+    return tid
+
+
+def _validate_version(version: str) -> str:
+    v = (version or "").strip()
+    if not v:
+        raise ValueError("version required")
+    if not re.fullmatch(r"[a-zA-Z0-9._-]{1,80}", v):
+        raise ValueError("version invalid")
+    return v
+
+
 def upsert_ruleset(ruleset: Ruleset) -> None:
+    ruleset.templateId = _validate_template_id(ruleset.templateId)
+    ruleset.version = _validate_version(ruleset.version)
+    ruleset.name = (ruleset.name or "").strip() or ruleset.templateId
     ensure_rulesets_file()
     path = _rulesets_file_path()
     with _exclusive_lock(path):

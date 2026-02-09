@@ -99,20 +99,18 @@ export const useCompareFlow = (p: Params) => {
             const best = obj?.best || null
             const score = typeof best?.score === 'number' ? best.score : null
             const tid = typeof best?.templateId === 'string' ? best.templateId : ''
-            if (score !== null && tid && score >= TEMPLATE_MATCH_THRESHOLD) {
-              p.setTemplateId(tid)
-              if (p.leftBlocks.length === 0) {
-                const { blocks: tplBlocks, name } = await loadTemplateBlocksForCompare(tid, { signal: controller.signal })
-                p.setLeftBlocks(tplBlocks)
-                const label = (name || tid || p.t('label.standardTemplate')).trim()
-                p.setLeftFile(
-                  new File([], p.t('filename.standardTemplate', { label }), {
-                    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                  })
-                )
-              }
-            } else {
-              p.setTemplateId('')
+            if (tid) p.setTemplateId(tid)
+            else p.setTemplateId('')
+
+            if (score !== null && tid && score >= TEMPLATE_MATCH_THRESHOLD && p.leftBlocks.length === 0) {
+              const { blocks: tplBlocks, name } = await loadTemplateBlocksForCompare(tid, { signal: controller.signal })
+              p.setLeftBlocks(tplBlocks)
+              const label = (name || tid || p.t('label.standardTemplate')).trim()
+              p.setLeftFile(
+                new File([], p.t('filename.standardTemplate', { label }), {
+                  type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                })
+              )
             }
           } catch {
             p.setTemplateId('')

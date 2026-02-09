@@ -1,5 +1,13 @@
-import type { Block, DetectedField } from './types'
+import type { Block, DetectedField, FieldRuleState } from './types'
 import { escapeRegex, hashString } from './textUtils'
+
+export const defaultFieldRuleState = (f: DetectedField): FieldRuleState => ({
+  requiredAfterColon: f.kind === 'field',
+  dateMonth: f.kind === 'field' && f.label.includes('日期'),
+  dateFormat: f.kind === 'field' && f.label.includes('日期'),
+  tableSalesItems: f.kind === 'table',
+  aiPrompt: ''
+})
 
 const decodeHtmlLite = (s: string) => {
   return (s || '')

@@ -9,6 +9,69 @@ export const hashString = (input: string) => {
 
 export const escapeRegex = (s: string) => (s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+export const normalizeStructurePathForListNumId = (structurePath: string) => (structurePath || '').replace(/\.ol\[\d+\]/g, '.ol[*]')
+
+export const remapPromptKeysToCandidates = (prompts: Record<string, string>, candidates: string[]) => {
+  const candidateSet = new Set((candidates || []).map((x) => String(x || '').trim()).filter(Boolean))
+  const normalizedToCandidates = new Map<string, string[]>()
+  const normalizedCandidates = new Map<string, string>()
+
+  for (const c of candidateSet) {
+    const norm = normalizeStructurePathForListNumId(c)
+    const arr = normalizedToCandidates.get(norm) || []
+    arr.push(c)
+    normalizedToCandidates.set(norm, arr)
+    normalizedCandidates.set(c, norm)
+  }
+
+  const out: Record<string, string> = {}
+  const bestScore = (a: string, b: string) => {
+    if (a === b) return 10_000 + a.length
+    if (a.startsWith(b) || b.startsWith(a)) return Math.min(a.length, b.length)
+    return -1
+  }
+
+  for (const [rawKey, rawVal] of Object.entries(prompts || {})) {
+    const key = String(rawKey || '').trim()
+    if (!key) continue
+    const val = typeof rawVal === 'string' ? rawVal : ''
+    if (!val.trim()) continue
+
+    if (candidateSet.has(key)) {
+      const prev = out[key]
+      if (!prev || val.trim().length > prev.trim().length) out[key] = val
+      continue
+    }
+
+    const norm = normalizeStructurePathForListNumId(key)
+    const exactNorm = normalizedToCandidates.get(norm)
+    if (exactNorm && exactNorm.length > 0) {
+      const target = exactNorm[0]
+      const prev = out[target]
+      if (!prev || val.trim().length > prev.trim().length) out[target] = val
+      continue
+    }
+
+    let best: { c: string; score: number } | null = null
+    for (const c of candidateSet) {
+      const cn = normalizedCandidates.get(c) || normalizeStructurePathForListNumId(c)
+      const score = bestScore(cn, norm)
+      if (score < 0) continue
+      if (!best || score > best.score) best = { c, score }
+    }
+    if (best) {
+      const prev = out[best.c]
+      if (!prev || val.trim().length > prev.trim().length) out[best.c] = val
+      continue
+    }
+
+    const prev = out[key]
+    if (!prev || val.trim().length > prev.trim().length) out[key] = val
+  }
+
+  return out
+}
+
 export const applyIndentDataAttrs = (rawHtml: string, opts?: { indentNumbered?: boolean }) => {
   const html = rawHtml || ''
   if (!html) return html

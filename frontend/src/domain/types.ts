@@ -141,3 +141,8 @@ export interface Ruleset {
   referenceData: Record<string, unknown>
   points: RulesetPoint[]
 }
+
+export interface SaveRulesetResult {
+  ok: boolean
+  message: string
+}
