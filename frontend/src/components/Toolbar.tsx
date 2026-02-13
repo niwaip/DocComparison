@@ -5,11 +5,10 @@ type Props = {
   theme: 'dark' | 'light'
   toggleTheme: () => void
   openRules: () => void
-  rulesDisabled: boolean
 }
 
 export default function Toolbar(props: Props) {
-  const { theme, toggleTheme, openRules, rulesDisabled } = props
+  const { theme, toggleTheme, openRules } = props
   const { lang, setLang, t } = useI18n()
 
   const nextLang: Lang = lang === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -34,12 +33,9 @@ export default function Toolbar(props: Props) {
       <button
         className="btn-secondary"
         onClick={openRules}
-        disabled={rulesDisabled}
-        title={rulesDisabled ? t('toolbar.configRules.disabled') : undefined}
       >
         {t('toolbar.configRules')}
       </button>
     </div>
   )
 }
-

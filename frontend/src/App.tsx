@@ -66,6 +66,7 @@ type AppState = {
   activeRowId: string | null
   configOpen: boolean
   templateId: string
+  rulesTemplateId: string
   aiCheckEnabled: boolean
   aiAnalyzeEnabled: boolean
   uploadPaneCollapsed: boolean
@@ -101,7 +102,6 @@ type AppAction =
 
 const appInitialState = (): AppState => {
   const lang = normalizeLang((typeof window !== 'undefined' ? window.localStorage?.getItem('doccmp.lang') : null) || undefined)
-  const t = createT(lang)
   return {
     lang,
     leftFile: null,
@@ -118,6 +118,7 @@ const appInitialState = (): AppState => {
   activeRowId: null,
   configOpen: false,
   templateId: '',
+  rulesTemplateId: '',
   aiCheckEnabled: false,
   aiAnalyzeEnabled: false,
   uploadPaneCollapsed: false,
@@ -132,7 +133,7 @@ const appInitialState = (): AppState => {
   templateIndex: [],
   templateIndexLoading: false,
     newTemplateId: '',
-    newTemplateName: t('template.defaultName.sales'),
+    newTemplateName: '',
   templateDraftFile: null,
   fieldRules: {},
   blockPrompts: {},
@@ -178,6 +179,7 @@ function App() {
     activeRowId,
     configOpen,
     templateId,
+    rulesTemplateId,
     aiCheckEnabled,
     aiAnalyzeEnabled,
     uploadPaneCollapsed,
@@ -231,6 +233,7 @@ function App() {
       setActiveRowId: makeSetter('activeRowId'),
       setConfigOpen: makeSetter('configOpen'),
       setTemplateId: makeSetter('templateId'),
+      setRulesTemplateId: makeSetter('rulesTemplateId'),
       setAiCheckEnabled: makeSetter('aiCheckEnabled'),
       setAiAnalyzeEnabled: makeSetter('aiAnalyzeEnabled'),
       setUploadPaneCollapsed: makeSetter('uploadPaneCollapsed'),
@@ -272,6 +275,7 @@ function App() {
     setActiveRowId,
     setConfigOpen,
     setTemplateId,
+    setRulesTemplateId,
     setAiCheckEnabled,
     setAiAnalyzeEnabled,
     setUploadPaneCollapsed,
@@ -376,8 +380,8 @@ function App() {
     errText,
     reportError,
     configOpen,
-    templateId,
-    setTemplateId,
+    templateId: rulesTemplateId,
+    setTemplateId: setRulesTemplateId,
     templateNameById,
     templateIndex,
     setTemplateIndex,
@@ -564,8 +568,20 @@ function App() {
       <HeaderBar
         theme={theme}
         toggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-        openRules={() => { setConfigOpen(true); setError('') }}
-        rulesDisabled={!templateId}
+        openRules={() => {
+          setError('')
+          setRulesTemplateId('')
+          setNewTemplateId('')
+          setNewTemplateName('')
+          setTemplateDraftFile(null)
+          setTemplateBlocks([])
+          setFieldRules({})
+          setBlockPrompts({})
+          setGlobalPromptCfg(null)
+          setGlobalPromptDefaultDraft('')
+          setGlobalPromptTemplateDraft('')
+          setConfigOpen(true)
+        }}
       />
       
       {uploadPaneCollapsed ? (
@@ -699,8 +715,8 @@ function App() {
         open={configOpen}
         onClose={() => setConfigOpen(false)}
         reportError={reportError}
-        templateId={templateId}
-        setTemplateId={setTemplateId}
+        templateId={rulesTemplateId}
+        setTemplateId={setRulesTemplateId}
         saveRuleset={saveRuleset}
         rulesetLoading={rulesetLoading}
         templateIndex={templateIndex}

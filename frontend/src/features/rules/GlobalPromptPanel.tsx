@@ -38,7 +38,14 @@ export default function GlobalPromptPanel(props: Props) {
           </button>
         </div>
       </div>
-      <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12 }}>
+      <div
+        style={{
+          marginTop: 10,
+          display: 'grid',
+          gridTemplateColumns: templateId ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+          gap: 12
+        }}
+      >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 750, marginBottom: 8 }}>{t('rules.globalPrompt.defaultTitle')}</div>
           <textarea
@@ -48,15 +55,17 @@ export default function GlobalPromptPanel(props: Props) {
             style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }}
           />
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 750, marginBottom: 8, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('rules.globalPrompt.templateTitle', { templateId })}</div>
-          <textarea
-            value={globalPromptTemplateDraft}
-            onChange={(e) => setGlobalPromptTemplateDraft(e.target.value)}
-            placeholder={t('rules.globalPrompt.templatePlaceholder')}
-            style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }}
-          />
-        </div>
+        {templateId && (
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 750, marginBottom: 8, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{t('rules.globalPrompt.templateTitle', { templateId })}</div>
+            <textarea
+              value={globalPromptTemplateDraft}
+              onChange={(e) => setGlobalPromptTemplateDraft(e.target.value)}
+              placeholder={t('rules.globalPrompt.templatePlaceholder')}
+              style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box', minHeight: 160, resize: 'vertical', borderRadius: 12, border: '1px solid var(--control-border)', background: 'var(--control-bg)', color: 'var(--text)', padding: 12, fontSize: 12, lineHeight: 1.6 }}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -563,9 +563,11 @@ export const useRulesConfigFlow = (p: Params) => {
         defaultPrompt: globalPromptDefaultDraft,
         byTemplateId: baseByTemplateId
       }
-      const trimmed = globalPromptTemplateDraft.trim()
-      if (trimmed) next.byTemplateId[templateId] = trimmed
-      else delete next.byTemplateId[templateId]
+      if (templateId) {
+        const trimmed = globalPromptTemplateDraft.trim()
+        if (trimmed) next.byTemplateId[templateId] = trimmed
+        else delete next.byTemplateId[templateId]
+      }
       const saved: GlobalPromptConfig = await api.prompts.putGlobal(next)
       setGlobalPromptCfg(saved)
       setGlobalPromptDefaultDraft(saved?.defaultPrompt || '')
